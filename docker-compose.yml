@@ -1,0 +1,14 @@
+version: '3.9'
+
+services:
+  lockercloud:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lockercloud_app
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+    volumes:
+      - ./filestorage:/app/filestorage
