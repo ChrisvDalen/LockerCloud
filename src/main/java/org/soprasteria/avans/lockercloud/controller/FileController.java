@@ -1,5 +1,8 @@
-package org.soprasteria.avans.lockercloud;
+package org.soprasteria.avans.lockercloud.controller;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.soprasteria.avans.lockercloud.service.FileManagerService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
@@ -10,6 +13,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/files")
+@Tag(name = "File Operations", description = "Endpoints for file upload, download, deletion, listing and synchronization")
 public class FileController {
 
     private final FileManagerService fileManagerService;
@@ -19,6 +23,9 @@ public class FileController {
         this.fileManagerService = fileManagerService;
     }
 
+    @Operation(summary = "Upload a file", description = "Uploads a file to the server")
+    @ApiResponse(responseCode = "200", description = "File uploaded successfully")
+    @ApiResponse(responseCode = "400", description = "Error uploading file")
     @PostMapping("/upload")
     public ResponseEntity<String> uploadFile(@RequestParam("file") MultipartFile file) {
         try {
@@ -29,6 +36,9 @@ public class FileController {
         }
     }
 
+    @Operation(summary = "Download a file", description = "Downloads a file from the server")
+    @ApiResponse(responseCode = "200", description = "File downloaded successfully")
+    @ApiResponse(responseCode = "400", description = "Error downloading file")
     @GetMapping("/download")
     public ResponseEntity<byte[]> downloadFile(@RequestParam("fileName") String fileName) {
         try {
@@ -42,6 +52,9 @@ public class FileController {
         }
     }
 
+    @Operation(summary = "Delete a file", description = "Deletes a file from the server")
+    @ApiResponse(responseCode = "200", description = "File deleted successfully")
+    @ApiResponse(responseCode = "400", description = "Error deleting file")
     @DeleteMapping("/delete")
     public ResponseEntity<String> deleteFile(@RequestParam("fileName") String fileName) {
         try {
@@ -52,6 +65,8 @@ public class FileController {
         }
     }
 
+    @Operation(summary = "List files", description = "Lists all files stored on the server")
+    @ApiResponse(responseCode = "200", description = "Files listed successfully")
     @GetMapping("/list")
     public ResponseEntity<?> listFiles() {
         try {
@@ -61,6 +76,9 @@ public class FileController {
         }
     }
 
+    @Operation(summary = "Synchronize files", description = "Synchronizes files between the client and server")
+    @ApiResponse(responseCode = "200", description = "Files synchronized successfully")
+    @ApiResponse(responseCode = "400", description = "Error synchronizing files")
     @PostMapping("/sync")
     public ResponseEntity<String> syncFiles() {
         try {

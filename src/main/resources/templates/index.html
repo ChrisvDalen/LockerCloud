@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+  <title>CloudLocker</title>
+</head>
+<body>
+<h1>CloudLocker</h1>
+<p>Files:</p>
+<ul>
+  <li th:each="file : ${files}" th:text="${file}"></li>
+</ul>
+
+<form action="#" th:action="@{/api/files/upload}" method="post" enctype="multipart/form-data">
+  <input type="file" name="file"/>
+  <button type="submit">Upload</button>
+</form>
+</body>
+</html>
