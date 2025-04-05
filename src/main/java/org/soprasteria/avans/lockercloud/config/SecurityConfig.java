@@ -17,11 +17,11 @@ public class SecurityConfig {
                         // Open toegang tot Swagger-UI en API-docs
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         // Open toegang tot Thymeleaf pagina en andere statische resources
-                        .requestMatchers("/", "/index", "/css/**", "/js/**", "/images/**").permitAll()
+                        .requestMatchers("/", "/index", "/css/**", "/js/**", "/images/**", "/showCloudDirectory").permitAll()
                         // Overige endpoints (zoals /api/files/**) kunnen ook openbaar worden gemaakt als dat gewenst is
                         .requestMatchers("/api/files/**").permitAll()
                         // Alle andere requests vereisen authenticatie
-                        .anyRequest().authenticated()
+//                        .anyRequest().authenticated()
                 )
                 .httpBasic(Customizer.withDefaults());
         return http.build();

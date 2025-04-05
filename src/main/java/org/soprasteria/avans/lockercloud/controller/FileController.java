@@ -3,6 +3,8 @@ package org.soprasteria.avans.lockercloud.controller;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.soprasteria.avans.lockercloud.dto.SyncResult;
+import org.soprasteria.avans.lockercloud.model.FileMetadata;
 import org.soprasteria.avans.lockercloud.service.FileManagerService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
@@ -10,6 +12,8 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/files")
@@ -29,7 +33,7 @@ public class FileController {
     @PostMapping("/upload")
     public ResponseEntity<String> uploadFile(@RequestParam("file") MultipartFile file) {
         try {
-            fileManagerService.saveFile(file);
+            fileManagerService.saveFileWithRetry(file);
             return ResponseEntity.ok("File uploaded successfully");
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("Error uploading file: " + e.getMessage());
@@ -76,14 +80,13 @@ public class FileController {
         }
     }
 
-    @Operation(summary = "Synchronize files", description = "Synchronizes files between the client and server")
-    @ApiResponse(responseCode = "200", description = "Files synchronized successfully")
-    @ApiResponse(responseCode = "400", description = "Error synchronizing files")
+    @Operation(summary = "Synchronize files", description = "Synchronizes files between the client and server, returning instructions for upload, download, or conflict resolution")
+    @ApiResponse(responseCode = "200", description = "Sync result returned successfully")
     @PostMapping("/sync")
-    public ResponseEntity<String> syncFiles() {
+    public ResponseEntity<?> syncFiles(@RequestBody List<FileMetadata> clientFiles) {
         try {
-            fileManagerService.syncFiles();
-            return ResponseEntity.ok("Files synchronized successfully");
+            SyncResult result = fileManagerService.syncFiles(clientFiles);
+            return ResponseEntity.ok(result);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("Error syncing files: " + e.getMessage());
         }
