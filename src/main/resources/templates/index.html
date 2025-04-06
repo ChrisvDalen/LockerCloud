@@ -2,28 +2,25 @@
 <html xmlns:th="http://www.thymeleaf.org">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CloudLocker - Bestandsbeheer</title>
   <!-- Bootstrap 5 CSS -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
-      body {
-          padding-top: 60px;
-      }
-      .container {
-          max-width: 900px;
-      }
+      body { padding-top: 70px; }
+      .container { max-width: 960px; }
   </style>
 </head>
 <body>
 <!-- Navbar -->
-<nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
-  <div class="container-fluid">
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary fixed-top">
+  <div class="container">
     <a class="navbar-brand" href="/">CloudLocker</a>
-    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
-            aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent"
+            aria-controls="navbarContent" aria-expanded="false" aria-label="Toggle navigation">
       <span class="navbar-toggler-icon"></span>
     </button>
-    <div class="collapse navbar-collapse" id="navbarNav">
+    <div class="collapse navbar-collapse" id="navbarContent">
       <ul class="navbar-nav ms-auto">
         <li class="nav-item">
           <a class="nav-link active" aria-current="page" href="/">Home</a>
@@ -36,58 +33,65 @@
   </div>
 </nav>
 
-<!-- Main Container -->
-<div class="container mt-5">
+<!-- Main Content -->
+<main class="container mt-5">
   <h1 class="mb-4">CloudLocker - Bestandsbeheer</h1>
-  <div class="row">
-    <!-- Upload Card -->
-    <div class="col-md-12 mb-4">
-      <div class="card">
-        <div class="card-header">
-          Upload een bestand
-        </div>
-        <div class="card-body">
-          <form th:action="@{/api/files/upload}" method="post" enctype="multipart/form-data">
-            <div class="mb-3">
-              <input class="form-control" type="file" name="file" required>
-            </div>
-            <button type="submit" class="btn btn-primary">Upload</button>
-          </form>
-        </div>
-      </div>
+
+  <!-- Upload Form Card -->
+  <div class="card mb-4">
+    <div class="card-header">
+      Upload een bestand
     </div>
-    <!-- File List Card -->
-    <div class="col-md-12">
-      <div class="card">
-        <div class="card-header">
-          Bestanden op de server
+    <div class="card-body">
+      <form th:action="@{/api/files/upload}" method="post" enctype="multipart/form-data">
+        <div class="mb-3">
+          <input class="form-control" type="file" name="file" required>
         </div>
-        <div class="card-body">
-          <table class="table table-striped">
-            <thead>
-              <tr>
-                <th>Bestandsnaam</th>
-                <th>Acties</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr th:each="file : ${files}">
-                <td th:text="${file}">Bestandsnaam</td>
-                <td>
-                  <a th:href="@{/api/files/download(fileName=${file})}" class="btn btn-sm btn-success">Download</a>
-                  <a th:href="@{/api/files/delete(fileName=${file})}" class="btn btn-sm btn-danger" onclick="return confirm('Weet je zeker dat je dit bestand wilt verwijderen?');">Verwijderen</a>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-          <div th:if="${#lists.isEmpty(files)}" class="alert alert-info">
-            Er zijn geen bestanden gevonden.
-          </div>
-        </div>
+        <button type="submit" class="btn btn-primary">Upload</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Synchronisatie Resultaat -->
+  <div class="alert alert-info mb-4">
+    <h5>Synchronisatie resultaat:</h5>
+    <p>Te uploaden: <span th:text="${syncResult.filesToUpload.size()}">0</span></p>
+    <p>Te downloaden: <span th:text="${syncResult.filesToDownload.size()}">0</span></p>
+    <p>Conflicten: <span th:text="${syncResult.conflictFiles.size()}">0</span></p>
+  </div>
+
+  <!-- Bestandenlijst Card -->
+  <div class="card mb-4">
+    <div class="card-header">
+      Bestanden op de server
+    </div>
+    <div class="card-body">
+      <table class="table table-striped">
+        <thead>
+          <tr>
+            <th>Bestandsnaam</th>
+            <th>Acties</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr th:each="file : ${files}">
+            <td th:text="${file}">Bestandsnaam</td>
+            <td>
+              <a th:href="@{/api/files/download(fileName=${file})}" class="btn btn-sm btn-success">Download</a>
+              <a th:href="@{/api/files/delete(fileName=${file})}" class="btn btn-sm btn-danger"
+                 onclick="return confirm('Weet je zeker dat je dit bestand wilt verwijderen?');">Verwijderen</a>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <div th:if="${#lists.isEmpty(files)}" class="alert alert-info">
+        Er zijn geen bestanden gevonden.
       </div>
     </div>
   </div>
-</div>
+
+  <a href="/" class="btn btn-secondary">Herlaad pagina</a>
+</main>
 
 <!-- Bootstrap 5 JS Bundle -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
