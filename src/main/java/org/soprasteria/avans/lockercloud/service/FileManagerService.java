@@ -5,6 +5,7 @@ import org.soprasteria.avans.lockercloud.exception.FileStorageException;
 import org.soprasteria.avans.lockercloud.model.FileMetadata;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Retryable;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -14,6 +15,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -248,5 +250,11 @@ public class FileManagerService {
             throw new FileStorageException("Error reading client local sync directory", e);
         }
         return syncFiles(clientFiles);
+    }
+
+    @Async
+    public CompletableFuture<SyncResult> syncLocalClientFilesAsync() {
+        SyncResult result = syncLocalClientFiles();
+        return CompletableFuture.completedFuture(result);
     }
 }

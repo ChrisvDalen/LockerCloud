@@ -12,6 +12,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import java.util.List;
 
@@ -31,13 +32,15 @@ public class FileController {
     @ApiResponse(responseCode = "200", description = "File uploaded successfully")
     @ApiResponse(responseCode = "400", description = "Error uploading file")
     @PostMapping("/upload")
-    public ResponseEntity<String> uploadFile(@RequestParam("file") MultipartFile file) {
+    public String uploadFile(@RequestParam("file") MultipartFile file, RedirectAttributes redirectAttributes) {
         try {
             fileManagerService.saveFileWithRetry(file);
-            return ResponseEntity.ok("File uploaded successfully");
+            redirectAttributes.addFlashAttribute("uploadSuccess", "Bestand " + file.getOriginalFilename() + " succesvol geüpload!");
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Error uploading file: " + e.getMessage());
+            redirectAttributes.addFlashAttribute("uploadError", "Fout bij uploaden: " + e.getMessage());
         }
+        // Redirect terug naar de homepagina (index)
+        return "redirect:/";
     }
 
     @Operation(summary = "Download a file", description = "Downloads a file from the server")
