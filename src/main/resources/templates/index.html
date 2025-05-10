@@ -99,7 +99,16 @@
     </div>
   </div>
 
-  <a href="/" class="btn btn-secondary">Herlaad pagina</a>
+  <!-- Action buttons -->
+  <div class="d-flex justify-content-end mb-4">
+    <!-- Download all -->
+    <a th:href="@{/api/files/downloadAll}"
+       class="btn btn-success me-2">
+      Download alles
+    </a>
+    <!-- Reload page -->
+    <a href="/" class="btn btn-secondary">Herlaad pagina</a>
+  </div>
 </main>
 
 <!-- Bootstrap 5 JS Bundle -->
