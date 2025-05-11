@@ -11,6 +11,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
@@ -21,7 +22,7 @@ import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
-@RestController
+@Controller
 @RequestMapping("/api/files")
 @Tag(name = "File Operations", description = "Endpoints for file upload, download, deletion, listing and synchronization")
 public class FileController {
@@ -33,18 +34,30 @@ public class FileController {
         this.fileManagerService = fileManagerService;
     }
 
+    @GetMapping("/")
+    public String index() {
+        return "index";
+    }
+
     @Operation(summary = "Upload a file", description = "Uploads a file to the server")
     @ApiResponse(responseCode = "200", description = "File uploaded successfully")
     @ApiResponse(responseCode = "400", description = "Error uploading file")
     @PostMapping("/upload")
-    public String uploadFile(@RequestParam("file") MultipartFile file, RedirectAttributes redirectAttributes) {
+    public String uploadFile(
+            @RequestParam("file") MultipartFile file,
+            RedirectAttributes redirectAttributes) {
         try {
             fileManagerService.saveFileWithRetry(file);
-            redirectAttributes.addFlashAttribute("uploadSuccess", "Bestand " + file.getOriginalFilename() + " succesvol geüpload!");
+            redirectAttributes.addFlashAttribute(
+              "uploadSuccess",
+              "Bestand " + file.getOriginalFilename() + " succesvol geüpload!"
+            );
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("uploadError", "Fout bij uploaden: " + e.getMessage());
+            redirectAttributes.addFlashAttribute(
+              "uploadError",
+              "Fout bij uploaden: " + e.getMessage()
+            );
         }
-        // Redirect terug naar de homepagina (index)
         return "redirect:/";
     }
 

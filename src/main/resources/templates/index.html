@@ -1,124 +1,151 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CloudLocker - Bestandsbeheer</title>
   <!-- Bootstrap 5 CSS -->
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+  />
   <style>
-      body { padding-top: 70px; }
-      .container { max-width: 960px; }
-      /* Spinner overlay styling */
-      #loadingSpinner {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(255, 255, 255, 0.8);
-        display: none;
-        align-items: center;
-        justify-content: center;
-        z-index: 2000;
+    body {
+      padding-top: 70px;
+    }
+    .container {
+      max-width: 960px;
+    }
+    /* Toast container positioning */
+    .position-fixed.toast-container {
+      top: 1rem;
+      right: 1rem;
+      z-index: 1055;
+      position: fixed;
+    }
+    /* Spinner overlay styling */
+    #loadingSpinner {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(255, 255, 255, 0.8);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
       }
   </style>
 </head>
 <body>
-<!-- Navbar -->
-<nav class="navbar navbar-expand-lg navbar-dark bg-primary fixed-top">
-  <div class="container">
-    <a class="navbar-brand" href="/">CloudLocker</a>
-    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent"
-            aria-controls="navbarContent" aria-expanded="false" aria-label="Toggle navigation">
-      <span class="navbar-toggler-icon"></span>
-    </button>
-    <div class="collapse navbar-collapse" id="navbarContent">
-      <ul class="navbar-nav ms-auto">
-        <li class="nav-item">
-          <a class="nav-link active" aria-current="page" href="/">Home</a>
-        </li>
-        <li class="nav-item">
-          <a class="nav-link" href="/showCloudDirectory">Bestanden</a>
-        </li>
-      </ul>
-    </div>
-  </div>
-</nav>
-
-<!-- Loading Spinner Overlay -->
-<div id="loadingSpinner">
-  <div class="spinner-border text-primary" role="status">
-    <span class="visually-hidden">Aan het laden...</span>
-  </div>
-  <span class="ms-2">Alles wordt gedownload...</span>
-</div>
-
-<!-- Main Content -->
-<main class="container mt-5">
-  <h1 class="mb-4">CloudLocker - Bestandsbeheer</h1>
-
-  <!-- Flash Messages (Upload feedback etc.) -->
-  <div th:if="${uploadSuccess}" class="alert alert-success" role="alert">
-    <span th:text="${uploadSuccess}"></span>
-  </div>
-  <div th:if="${uploadError}" class="alert alert-danger" role="alert">
-    <span th:text="${uploadError}"></span>
-  </div>
-
-  <!-- Upload Form Card -->
-  <div class="card mb-4">
-    <div class="card-header">
-      Upload een bestand
-    </div>
-    <div class="card-body">
-      <form th:action="@{/api/files/upload}" method="post" enctype="multipart/form-data">
-        <div class="mb-3">
-          <input class="form-control" type="file" name="file" required>
-        </div>
-        <button type="submit" class="btn btn-primary">Upload</button>
-      </form>
-    </div>
-  </div>
-
-  <!-- Synchronisatie Resultaat Card -->
-  <div id="syncResult" class="card mb-4" style="display:none;">
-    <div class="card-header">Synchronisatie resultaat</div>
-    <div class="card-body">
-      <p>Te uploaden: <span id="uploadCount">0</span></p>
-      <p>Te downloaden: <span id="downloadCount">0</span></p>
-      <p>Conflicten: <span id="conflictCount">0</span></p>
-    </div>
-  </div>
-
-  <!-- Bestandenlijst Card -->
-  <div class="card mb-4">
-    <div class="card-header">
-      Bestanden op de server
-    </div>
-    <div class="card-body">
-      <table class="table table-striped">
-        <thead>
-          <tr>
-            <th>Bestandsnaam</th>
-            <th>Acties</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr th:each="file : ${files}">
-            <td th:text="${file}">Bestandsnaam</td>
-            <td>
-              <a th:href="@{/api/files/download(fileName=${file})}" class="btn btn-sm btn-success">Download</a>
-              <a th:href="@{/api/files/delete(fileName=${file})}" class="btn btn-sm btn-danger" onclick="return confirm('Weet je zeker dat je dit bestand wilt verwijderen?');">Verwijderen</a>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      <div th:if="${#lists.isEmpty(files)}" class="alert alert-info">
-        Er zijn geen bestanden gevonden.
+  <!-- Navbar -->
+  <nav class="navbar navbar-expand-lg navbar-dark bg-primary fixed-top">
+    <div class="container">
+      <a class="navbar-brand" href="/">CloudLocker</a>
+      <button
+        class="navbar-toggler"
+        type="button"
+        data-bs-toggle="collapse"
+        data-bs-target="#navbarContent"
+        aria-controls="navbarContent"
+        aria-expanded="false"
+        aria-label="Toggle navigation"
+      >
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarContent">
+        <ul class="navbar-nav ms-auto">
+          <li class="nav-item">
+            <a class="nav-link active" aria-current="page" href="/">Home</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/showCloudDirectory">Bestanden</a>
+          </li>
+        </ul>
       </div>
     </div>
+  </nav>
+
+  <!-- Toast container for flash messages -->
+  <div class="toast-container position-fixed p-3">
+    <!-- Toasts will be injected here -->
   </div>
+
+  <!-- Loading Spinner Overlay -->
+  <div id="loadingSpinner">
+    <div class="spinner-border text-primary" role="status">
+      <span class="visually-hidden">Aan het laden...</span>
+    </div>
+    <span class="ms-2">Alles wordt gedownload...</span>
+  </div>
+
+  <!-- Main Content -->
+  <main class="container mt-5">
+    <h1 class="mb-4">CloudLocker - Bestandsbeheer</h1>
+
+    <!-- Upload Form Card -->
+    <div class="card mb-4">
+      <div class="card-header">Upload een bestand</div>
+      <div class="card-body">
+        <form
+          th:action="@{/api/files/upload}"
+          method="post"
+          enctype="multipart/form-data"
+        >
+          <div class="mb-3">
+            <input class="form-control" type="file" name="file" required />
+          </div>
+          <button type="submit" class="btn btn-primary">Upload</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Synchronisatie Resultaat Card -->
+    <div id="syncResult" class="card mb-4" style="display: none;">
+      <div class="card-header">Synchronisatie resultaat</div>
+      <div class="card-body">
+        <p>Te uploaden: <span id="uploadCount">0</span></p>
+        <p>Te downloaden: <span id="downloadCount">0</span></p>
+        <p>Conflicten: <span id="conflictCount">0</span></p>
+      </div>
+    </div>
+
+    <!-- Bestandenlijst Card -->
+    <div class="card mb-4">
+      <div class="card-header">Bestanden op de server</div>
+      <div class="card-body">
+        <table class="table table-striped">
+          <thead>
+            <tr>
+              <th>Bestandsnaam</th>
+              <th>Acties</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr th:each="file : ${files}">
+              <td th:text="${file}">Bestandsnaam</td>
+              <td>
+                <a
+                  th:href="@{/api/files/download(fileName=${file})}"
+                  class="btn btn-sm btn-success"
+                  >Download</a
+                >
+                <a
+                  th:href="@{/api/files/delete(fileName=${file})}"
+                  class="btn btn-sm btn-danger"
+                  onclick="return confirm('Weet je zeker dat je dit bestand wilt verwijderen?');"
+                  >Verwijderen</a
+                >
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div th:if="${#lists.isEmpty(files)}" class="alert alert-info">
+          Er zijn geen bestanden gevonden.
+        </div>
+      </div>
+    </div>
 
   <!-- Action buttons -->
   <div class="d-flex justify-content-end mb-4">
@@ -131,24 +158,62 @@
   </div>
 </main>
 
-<!-- Bootstrap 5 JS Bundle -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<!-- AJAX om synchronisatie asynchroon te starten -->
-<script>
-    document.addEventListener("DOMContentLoaded", function() {
-        // Trigger de synchronisatie via AJAX
-        fetch('/api/files/triggerSync')
-            .then(response => response.json())
-            .then(data => {
-                document.getElementById("syncResult").style.display = "block";
-                document.getElementById("uploadCount").innerText = data.filesToUpload.length;
-                document.getElementById("downloadCount").innerText = data.filesToDownload.length;
-                document.getElementById("conflictCount").innerText = data.conflictFiles.length;
-            })
-            .catch(error => {
-                console.error("Error tijdens synchronisatie:", error);
-            });
+  <!-- Bootstrap 5 JS Bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <!-- Inline Thymeleaf + Toast JS -->
+  <script th:inline="javascript">
+    /*<![CDATA[*/
+    // Fetch flash attributes
+    const successMsg = /*[[${uploadSuccess}]]*/ '';
+    const errorMsg = /*[[${uploadError}]]*/ '';
+
+    /**
+     * Create and show a Bootstrap toast
+     * @param {string} message - The message to display
+     * @param {boolean} isSuccess - true for success (green), false for error (red)
+     * @param {number} delayMs - How long before auto-hide (ms)
+     */
+    function showToast(message, isSuccess = true, delayMs = 4000) {
+      const container = document.querySelector('.toast-container');
+      // Toast element
+      const toastEl = document.createElement('div');
+      toastEl.className =
+        'toast align-items-center text-bg-' +
+        (isSuccess ? 'success' : 'danger') +
+        ' border-0';
+      toastEl.setAttribute('role', 'alert');
+      toastEl.setAttribute('aria-live', 'assertive');
+      toastEl.setAttribute('aria-atomic', 'true');
+      toastEl.setAttribute('data-bs-delay', delayMs);
+
+      // Inner HTML
+      toastEl.innerHTML = `
+        <div class="d-flex">
+          <div class="toast-body">${message}</div>
+          <button
+            type="button"
+            class="btn-close btn-close-white me-2 m-auto"
+            data-bs-dismiss="toast"
+            aria-label="Close"
+          ></button>
+        </div>
+      `;
+      container.appendChild(toastEl);
+
+      // Initialize and show
+      const toast = new bootstrap.Toast(toastEl);
+      toast.show();
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      if (successMsg) {
+        showToast(successMsg, true);
+      } else if (errorMsg) {
+        showToast(errorMsg, false);
+      }
     });
+    /*]]>*/
 
     document.addEventListener("DOMContentLoaded", function() {
         const downloadBtn = document.getElementById('downloadAllBtn');
@@ -181,6 +246,6 @@
             });
         }
     });
-</script>
+  </script>
 </body>
 </html>
