@@ -87,7 +87,6 @@ public class FileController {
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .body(zipBytes);
         } catch (IOException | RuntimeException e) {
-            // Fout tijdens inpakken of ophalen bestanden
             return ResponseEntity
                 .status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(null);

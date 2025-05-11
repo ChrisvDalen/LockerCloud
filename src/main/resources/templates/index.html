@@ -9,6 +9,19 @@
   <style>
       body { padding-top: 70px; }
       .container { max-width: 960px; }
+      /* Spinner overlay styling */
+      #loadingSpinner {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(255, 255, 255, 0.8);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 2000;
+      }
   </style>
 </head>
 <body>
@@ -32,6 +45,14 @@
     </div>
   </div>
 </nav>
+
+<!-- Loading Spinner Overlay -->
+<div id="loadingSpinner">
+  <div class="spinner-border text-primary" role="status">
+    <span class="visually-hidden">Aan het laden...</span>
+  </div>
+  <span class="ms-2">Alles wordt gedownload...</span>
+</div>
 
 <!-- Main Content -->
 <main class="container mt-5">
@@ -102,10 +123,9 @@
   <!-- Action buttons -->
   <div class="d-flex justify-content-end mb-4">
     <!-- Download all -->
-    <a th:href="@{/api/files/downloadAll}"
-       class="btn btn-success me-2">
+    <button id="downloadAllBtn" data-href="/api/files/downloadAll" class="btn btn-success me-2">
       Download alles
-    </a>
+    </button>
     <!-- Reload page -->
     <a href="/" class="btn btn-secondary">Herlaad pagina</a>
   </div>
@@ -128,6 +148,38 @@
             .catch(error => {
                 console.error("Error tijdens synchronisatie:", error);
             });
+    });
+
+    document.addEventListener("DOMContentLoaded", function() {
+        const downloadBtn = document.getElementById('downloadAllBtn');
+        const spinner = document.getElementById('loadingSpinner');
+        if (downloadBtn) {
+            downloadBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                const url = this.getAttribute('data-href');
+                spinner.style.display = 'flex';
+
+                // Start the download and hide spinner after a delay
+                fetch(url)
+                    .then(response => {
+                        if (response.ok) {
+                            // Trigger download
+                            window.location.href = url;
+                            // Hide spinner after a delay (adjust as needed)
+                            setTimeout(() => {
+                                spinner.style.display = 'none';
+                            }, 3000);
+                        } else {
+                            console.error("Download failed");
+                            spinner.style.display = 'none';
+                        }
+                    })
+                    .catch(error => {
+                        console.error("Error during download:", error);
+                        spinner.style.display = 'none';
+                    });
+            });
+        }
     });
 </script>
 </body>
