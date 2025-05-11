@@ -75,6 +75,11 @@ public class FileController {
             try (ZipOutputStream zos = new ZipOutputStream(baos)) {
                 for (String name : filenames) {
                     byte[] data = fileManagerService.getFile(name);
+                    if (data == null) {
+                        // Log a warning and skip this file
+                        System.err.println("Warning: File " + name + " could not be found or is empty.");
+                        continue;
+                    }
                     ZipEntry entry = new ZipEntry(name);
                     zos.putNextEntry(entry);
                     zos.write(data);
