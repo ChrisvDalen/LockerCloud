@@ -1,164 +1,251 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CloudLocker - Bestandsbeheer</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap 5 CSS -->
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+  />
   <style>
-      body { padding-top: 70px; }
-      .container { max-width: 960px; }
+    body {
+      padding-top: 70px;
+    }
+    .container {
+      max-width: 960px;
+    }
+    /* Toast container positioning */
+    .position-fixed.toast-container {
+      top: 1rem;
+      right: 1rem;
+      z-index: 1055;
+      position: fixed;
+    }
+    /* Spinner overlay styling */
+    #loadingSpinner {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(255, 255, 255, 0.8);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+      }
   </style>
 </head>
 <body>
-<nav class="navbar navbar-expand-lg navbar-dark bg-primary fixed-top">
-  <div class="container">
-    <a class="navbar-brand" href="/">CloudLocker</a>
-    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent"
-            aria-controls="navbarContent" aria-expanded="false" aria-label="Toggle navigation">
-      <span class="navbar-toggler-icon"></span>
-    </button>
-    <div class="collapse navbar-collapse" id="navbarContent">
-      <ul class="navbar-nav ms-auto">
-        <li class="nav-item">
-          <a class="nav-link active" aria-current="page" href="/">Home</a>
-        </li>
-        <li class="nav-item">
-          <a class="nav-link" href="/showCloudDirectory">Bestanden</a>
-        </li>
-      </ul>
-    </div>
-  </div>
-</nav>
-<main class="container mt-5">
-  <h1 class="mb-4">CloudLocker - Bestandsbeheer</h1>
-
-  <div class="card mb-4">
-    <div class="card-header">Upload een bestand</div>
-    <div class="card-body">
-      <div id="uploadMessage"></div>
-
-      <form id="uploadForm">
-        <div class="mb-3">
-          <input class="form-control" type="file" name="file" id="fileInput" required>
-        </div>
-        <button type="submit" class="btn btn-primary">Upload</button>
-
-        <div id="uploadSpinner" class="mt-3" style="display: none;">
-          <div class="spinner-border text-primary" role="status">
-            <span class="visually-hidden">Bezig met uploaden...</span>
-          </div>
-          <span class="ms-2">Bezig met uploaden...</span>
-        </div>
-
-        <div class="progress mt-3" style="height: 25px; display: none;" id="progressWrapper">
-          <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%;">
-            0%
-          </div>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <div id="syncResult" class="card mb-4" style="display:none;">
-    <div class="card-header">Synchronisatie resultaat</div>
-    <div class="card-body">
-      <p>Te uploaden: <span id="uploadCount">0</span></p>
-      <p>Te downloaden: <span id="downloadCount">0</span></p>
-      <p>Conflicten: <span id="conflictCount">0</span></p>
-    </div>
-  </div>
-
-  <div class="card mb-4">
-    <div class="card-header">Bestanden op de server</div>
-    <div class="card-body">
-      <table class="table table-striped">
-        <thead>
-          <tr>
-            <th>Bestandsnaam</th>
-            <th>Acties</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr th:each="file : ${files}">
-            <td th:text="${file}">Bestandsnaam</td>
-            <td>
-              <a th:href="@{/api/files/download(fileName=${file})}" class="btn btn-sm btn-success">Download</a>
-              <a th:href="@{/api/files/delete(fileName=${file})}" class="btn btn-sm btn-danger" onclick="return confirm('Weet je zeker dat je dit bestand wilt verwijderen?');">Verwijderen</a>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      <div th:if="${#lists.isEmpty(files)}" class="alert alert-info">
-        Er zijn geen bestanden gevonden.
+  <!-- Navbar -->
+  <nav class="navbar navbar-expand-lg navbar-dark bg-primary fixed-top">
+    <div class="container">
+      <a class="navbar-brand" href="/">CloudLocker</a>
+      <button
+        class="navbar-toggler"
+        type="button"
+        data-bs-toggle="collapse"
+        data-bs-target="#navbarContent"
+        aria-controls="navbarContent"
+        aria-expanded="false"
+        aria-label="Toggle navigation"
+      >
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarContent">
+        <ul class="navbar-nav ms-auto">
+          <li class="nav-item">
+            <a class="nav-link active" aria-current="page" href="/">Home</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/showCloudDirectory">Bestanden</a>
+          </li>
+        </ul>
       </div>
     </div>
+  </nav>
+
+  <!-- Toast container for flash messages -->
+  <div class="toast-container position-fixed p-3">
+    <!-- Toasts will be injected here -->
   </div>
 
-  <a href="/" class="btn btn-secondary">Herlaad pagina</a>
+  <!-- Loading Spinner Overlay -->
+  <div id="loadingSpinner">
+    <div class="spinner-border text-primary" role="status">
+      <span class="visually-hidden">Aan het laden...</span>
+    </div>
+    <span class="ms-2">Alles wordt gedownload...</span>
+  </div>
+
+  <!-- Main Content -->
+  <main class="container mt-5">
+    <h1 class="mb-4">CloudLocker - Bestandsbeheer</h1>
+
+    <!-- Upload Form Card -->
+    <div class="card mb-4">
+      <div class="card-header">Upload een bestand</div>
+      <div class="card-body">
+        <form
+          th:action="@{/api/files/upload}"
+          method="post"
+          enctype="multipart/form-data"
+        >
+          <div class="mb-3">
+            <input class="form-control" type="file" name="file" required />
+          </div>
+          <button type="submit" class="btn btn-primary">Upload</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Synchronisatie Resultaat Card -->
+    <div id="syncResult" class="card mb-4" style="display: none;">
+      <div class="card-header">Synchronisatie resultaat</div>
+      <div class="card-body">
+        <p>Te uploaden: <span id="uploadCount">0</span></p>
+        <p>Te downloaden: <span id="downloadCount">0</span></p>
+        <p>Conflicten: <span id="conflictCount">0</span></p>
+      </div>
+    </div>
+
+    <!-- Bestandenlijst Card -->
+    <div class="card mb-4">
+      <div class="card-header">Bestanden op de server</div>
+      <div class="card-body">
+        <table class="table table-striped">
+          <thead>
+            <tr>
+              <th>Bestandsnaam</th>
+              <th>Acties</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr th:each="file : ${files}">
+              <td th:text="${file}">Bestandsnaam</td>
+              <td>
+                <a
+                  th:href="@{/api/files/download(fileName=${file})}"
+                  class="btn btn-sm btn-success"
+                  >Download</a
+                >
+                <a
+                  th:href="@{/api/files/delete(fileName=${file})}"
+                  class="btn btn-sm btn-danger"
+                  onclick="return confirm('Weet je zeker dat je dit bestand wilt verwijderen?');"
+                  >Verwijderen</a
+                >
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div th:if="${#lists.isEmpty(files)}" class="alert alert-info">
+          Er zijn geen bestanden gevonden.
+        </div>
+      </div>
+    </div>
+
+  <!-- Action buttons -->
+  <div class="d-flex justify-content-end mb-4">
+    <!-- Download all -->
+    <button id="downloadAllBtn" data-href="/api/files/downloadAll" class="btn btn-success me-2">
+      Download alles
+    </button>
+    <!-- Reload page -->
+    <a href="/" class="btn btn-secondary">Herlaad pagina</a>
+  </div>
 </main>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script>
+  <!-- Bootstrap 5 JS Bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <!-- Inline Thymeleaf + Toast JS -->
+  <script th:inline="javascript">
+    /*<![CDATA[*/
+    // Fetch flash attributes
+    const successMsg = /*[[${uploadSuccess}]]*/ '';
+    const errorMsg = /*[[${uploadError}]]*/ '';
+
+    /**
+     * Create and show a Bootstrap toast
+     * @param {string} message - The message to display
+     * @param {boolean} isSuccess - true for success (green), false for error (red)
+     * @param {number} delayMs - How long before auto-hide (ms)
+     */
+    function showToast(message, isSuccess = true, delayMs = 4000) {
+      const container = document.querySelector('.toast-container');
+      // Toast element
+      const toastEl = document.createElement('div');
+      toastEl.className =
+        'toast align-items-center text-bg-' +
+        (isSuccess ? 'success' : 'danger') +
+        ' border-0';
+      toastEl.setAttribute('role', 'alert');
+      toastEl.setAttribute('aria-live', 'assertive');
+      toastEl.setAttribute('aria-atomic', 'true');
+      toastEl.setAttribute('data-bs-delay', delayMs);
+
+      // Inner HTML
+      toastEl.innerHTML = `
+        <div class="d-flex">
+          <div class="toast-body">${message}</div>
+          <button
+            type="button"
+            class="btn-close btn-close-white me-2 m-auto"
+            data-bs-dismiss="toast"
+            aria-label="Close"
+          ></button>
+        </div>
+      `;
+      container.appendChild(toastEl);
+
+      // Initialize and show
+      const toast = new bootstrap.Toast(toastEl);
+      toast.show();
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      if (successMsg) {
+        showToast(successMsg, true);
+      } else if (errorMsg) {
+        showToast(errorMsg, false);
+      }
+    });
+    /*]]>*/
+
     document.addEventListener("DOMContentLoaded", function() {
-        fetch('/api/files/triggerSync')
-            .then(response => response.json())
-            .then(data => {
-                document.getElementById("syncResult").style.display = "block";
-                document.getElementById("uploadCount").innerText = data.filesToUpload.length;
-                document.getElementById("downloadCount").innerText = data.filesToDownload.length;
-                document.getElementById("conflictCount").innerText = data.conflictFiles.length;
-            })
-            .catch(error => console.error("Error tijdens synchronisatie:", error));
+        const downloadBtn = document.getElementById('downloadAllBtn');
+        const spinner = document.getElementById('loadingSpinner');
+        if (downloadBtn) {
+            downloadBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                const url = this.getAttribute('data-href');
+                spinner.style.display = 'flex';
+
+                // Start the download and hide spinner after a delay
+                fetch(url)
+                    .then(response => {
+                        if (response.ok) {
+                            // Trigger download
+                            window.location.href = url;
+                            // Hide spinner after a delay (adjust as needed)
+                            setTimeout(() => {
+                                spinner.style.display = 'none';
+                            }, 3000);
+                        } else {
+                            console.error("Download failed");
+                            spinner.style.display = 'none';
+                        }
+                    })
+                    .catch(error => {
+                        console.error("Error during download:", error);
+                        spinner.style.display = 'none';
+                    });
+            });
+        }
     });
-</script>
-<script>
-    document.getElementById("uploadForm").addEventListener("submit", function (e) {
-        e.preventDefault();
-        const fileInput = document.getElementById("fileInput");
-        const messageBox = document.getElementById("uploadMessage");
-        if (!fileInput.files.length) return;
-
-        const file = fileInput.files[0];
-        const formData = new FormData();
-        formData.append("file", file);
-
-        const xhr = new XMLHttpRequest();
-        xhr.open("POST", "/api/files/upload", true);
-
-        xhr.upload.onprogress = function (event) {
-            if (event.lengthComputable) {
-                const percent = Math.round((event.loaded / event.total) * 100);
-                const bar = document.getElementById("progressBar");
-                const wrapper = document.getElementById("progressWrapper");
-                wrapper.style.display = "block";
-                bar.style.width = percent + "%";
-                bar.innerText = percent + "%";
-            }
-        };
-
-        xhr.onloadstart = function () {
-            document.getElementById("uploadSpinner").style.display = "block";
-            messageBox.innerHTML = "";
-        };
-
-        xhr.onloadend = function () {
-            document.getElementById("uploadSpinner").style.display = "none";
-            document.getElementById("progressWrapper").style.display = "none";
-            if (xhr.status === 200) {
-                messageBox.innerHTML = '<div class="alert alert-success">Bestand succesvol geüpload.</div>';
-            } else {
-                messageBox.innerHTML = '<div class="alert alert-danger">Upload mislukt. Probeer opnieuw.</div>';
-            }
-        };
-
-        xhr.onerror = function () {
-            document.getElementById("uploadSpinner").style.display = "none";
-            messageBox.innerHTML = '<div class="alert alert-danger">Netwerkfout. Upload mislukt.</div>';
-        };
-
-        xhr.send(formData);
-    });
-</script>
+  </script>
 </body>
 </html>

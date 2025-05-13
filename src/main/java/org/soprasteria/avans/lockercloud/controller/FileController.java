@@ -8,15 +8,21 @@ import org.soprasteria.avans.lockercloud.model.FileMetadata;
 import org.soprasteria.avans.lockercloud.service.FileManagerService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
-@RestController
+@Controller
 @RequestMapping("/api/files")
 @Tag(name = "File Operations", description = "Endpoints for file upload, download, deletion, listing and synchronization")
 public class FileController {
@@ -28,18 +34,30 @@ public class FileController {
         this.fileManagerService = fileManagerService;
     }
 
+    @GetMapping("/")
+    public String index() {
+        return "index";
+    }
+
     @Operation(summary = "Upload a file", description = "Uploads a file to the server")
     @ApiResponse(responseCode = "200", description = "File uploaded successfully")
     @ApiResponse(responseCode = "400", description = "Error uploading file")
     @PostMapping("/upload")
-    public String uploadFile(@RequestParam("file") MultipartFile file, RedirectAttributes redirectAttributes) {
+    public String uploadFile(
+            @RequestParam("file") MultipartFile file,
+            RedirectAttributes redirectAttributes) {
         try {
             fileManagerService.saveFileWithRetry(file);
-            redirectAttributes.addFlashAttribute("uploadSuccess", "Bestand " + file.getOriginalFilename() + " succesvol geüpload!");
+            redirectAttributes.addFlashAttribute(
+              "uploadSuccess",
+              "Bestand " + file.getOriginalFilename() + " succesvol geüpload!"
+            );
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("uploadError", "Fout bij uploaden: " + e.getMessage());
+            redirectAttributes.addFlashAttribute(
+              "uploadError",
+              "Fout bij uploaden: " + e.getMessage()
+            );
         }
-        // Redirect terug naar de homepagina (index)
         return "redirect:/";
     }
 
@@ -56,6 +74,40 @@ public class FileController {
                     .body(fileData);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(null);
+        }
+    }
+
+    @Operation(summary = "Download all files as ZIP",
+           description = "Bundles all server files into a single ZIP and returns it")
+    @ApiResponse(responseCode = "200", description = "ZIP downloaded successfully")
+    @GetMapping("/downloadAll")
+    public ResponseEntity<byte[]> downloadAllFiles() {
+        try {
+            List<String> filenames = fileManagerService.listFiles();
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            try (ZipOutputStream zos = new ZipOutputStream(baos)) {
+                for (String name : filenames) {
+                    byte[] data = fileManagerService.getFile(name);
+                    if (data == null) {
+                        // Log a warning and skip this file
+                        System.err.println("Warning: File " + name + " could not be found or is empty.");
+                        continue;
+                    }
+                    ZipEntry entry = new ZipEntry(name);
+                    zos.putNextEntry(entry);
+                    zos.write(data);
+                    zos.closeEntry();
+                }
+            }
+            byte[] zipBytes = baos.toByteArray();
+            return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"all-files.zip\"")
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(zipBytes);
+        } catch (IOException | RuntimeException e) {
+            return ResponseEntity
+                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(null);
         }
     }
 
