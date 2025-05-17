@@ -257,4 +257,32 @@ public class FileManagerService {
         SyncResult result = syncLocalClientFiles();
         return CompletableFuture.completedFuture(result);
     }
+
+    public void saveFileTransactional(MultipartFile file, String expectedChecksum) {
+        String originalFileName = file.getOriginalFilename();
+        if (originalFileName == null) {
+            throw new FileStorageException("File name is null");
+        }
+
+        Path tempPath = storageLocation.resolve(originalFileName + ".tmp");
+        Path finalPath = storageLocation.resolve(originalFileName);
+
+        try (InputStream in = file.getInputStream()) {
+            Files.copy(in, tempPath, StandardCopyOption.REPLACE_EXISTING);
+            String actualChecksum = calculateChecksum(tempPath);
+
+            if (!actualChecksum.equalsIgnoreCase(expectedChecksum)) {
+                Files.deleteIfExists(tempPath);
+                throw new FileStorageException("Checksum mismatch for file " + originalFileName);
+            }
+
+            Files.move(tempPath, finalPath, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            try {
+                Files.deleteIfExists(tempPath);
+            } catch (IOException ignore) {}
+            throw new FileStorageException("Failed transactional save for " + originalFileName, e);
+        }
+    }
+
 }
