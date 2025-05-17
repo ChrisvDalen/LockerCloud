@@ -147,13 +147,14 @@
       </div>
     </div>
 
-  <!-- Action buttons -->
   <div class="d-flex justify-content-end mb-4">
-    <!-- Download all -->
-    <button id="downloadAllBtn" data-href="/api/files/downloadAll" class="btn btn-success me-2">
+    <button id="syncBtn" class="btn btn-primary me-2">
+      Synchroniseer
+    </button>
+    <button id="downloadAllBtn" data-href="/api/files/downloadAll"
+            class="btn btn-success me-2">
       Download alles
     </button>
-    <!-- Reload page -->
     <a href="/" class="btn btn-secondary">Herlaad pagina</a>
   </div>
 </main>
@@ -246,6 +247,54 @@
             });
         }
     });
+  </script>
+  <script>
+  // grab references
+  const syncBtn     = document.getElementById('syncBtn');
+  const spinner     = document.getElementById('loadingSpinner');
+  const syncResult  = document.getElementById('syncResult');
+  const uploadCount = document.getElementById('uploadCount');
+  const downloadCount = document.getElementById('downloadCount');
+  const conflictCount = document.getElementById('conflictCount');
+
+  syncBtn.addEventListener('click', () => {
+    spinner.style.display = 'flex';
+    // call the new syncLocal endpoint
+    fetch('/api/files/syncLocal')
+    .then(async resp => {
+      const json = await resp.json();
+
+      // Map to your existing property names:
+      const toUpload   = json.filesToUpload;
+      const toDownload = json.filesToDownload;
+      const conflicts  = json.conflictFiles;
+
+      if (resp.status === 409) {
+        showToast(`Conflicten: ${conflicts.join(', ')}`, false, 8000);
+        return;
+      }
+
+      // Update counts in the UI
+      uploadCount.textContent   = toUpload.length;
+      downloadCount.textContent = toDownload.length;
+      conflictCount.textContent = conflicts.length;
+      syncResult.style.display  = 'block';
+
+      // Trigger uploads/downloads
+      toUpload.forEach(name   => {
+        // e.g. POST file to /api/files/upload
+      });
+      toDownload.forEach(name => {
+        window.location.href = `/api/files/download?fileName=${encodeURIComponent(name)}`;
+      });
+    })
+    .catch(err => {
+      showToast('Synchronisatie mislukt', false);
+    })
+    .finally(() => {
+      spinner.style.display = 'none';
+    });
+  });
   </script>
 </body>
 </html>
