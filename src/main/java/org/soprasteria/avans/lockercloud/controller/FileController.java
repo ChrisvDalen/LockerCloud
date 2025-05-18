@@ -140,7 +140,6 @@ public class FileController {
     @Operation(summary = "Synchronize files", description = "Synchronizes files between the client and server, returning instructions for upload, download, or conflict resolution")
     @ApiResponse(responseCode = "200", description = "Sync result returned successfully")
     @PostMapping("/sync")
-    //@ResponseBody // Ensures no redirect or login prompt, returns JSON directly
     public ResponseEntity<?> syncFiles(@RequestBody List<FileMetadata> clientFiles) {
         try {
             SyncResult result = fileManagerService.syncFiles(clientFiles);
