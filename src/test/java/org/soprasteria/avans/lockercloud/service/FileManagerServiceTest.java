@@ -148,9 +148,10 @@ class FileManagerServiceTest {
 
         // client metadata
         String checksum1 = md5(c1);
-        FileMetadata m1 = new FileMetadata(s1, checksum1, c1.length, LocalDateTime.now());
-        FileMetadata m2 = new FileMetadata(s2, "deadbeef", c2.length, LocalDateTime.now());
-        FileMetadata m3 = new FileMetadata("three.txt", "abc", 0, LocalDateTime.now());
+        long now = System.currentTimeMillis();
+        FileMetadata m1 = new FileMetadata(s1, checksum1, c1.length, LocalDateTime.now(), now);
+        FileMetadata m2 = new FileMetadata(s2, "deadbeef", c2.length, LocalDateTime.now(), now);
+        FileMetadata m3 = new FileMetadata("three.txt", "abc", 0, LocalDateTime.now(), now);
         List<FileMetadata> client = Arrays.asList(m1, m2, m3);
 
         SyncResult res = service.syncFiles(client);
