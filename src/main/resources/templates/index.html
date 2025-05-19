@@ -80,13 +80,6 @@
     <span class="ms-2">Alles wordt gedownload...</span>
   </div>
 
-  <!-- Spinner overlay -->
-  <div id="uploadingSpinner">
-    <div class="spinner-border text-primary" role="status">
-      <span class="visually-hidden">Bezig met uploaden...</span>
-    </div>
-  </div>
-
   <!-- Main Content -->
   <main class="container mt-5">
     <h1 class="mb-4">CloudLocker - Bestandsbeheer</h1>
@@ -153,18 +146,17 @@
         </div>
       </div>
     </div>
-
-  <div class="d-flex justify-content-end mb-4">
-    <button id="syncBtn" class="btn btn-primary me-2">
-      Synchroniseer
-    </button>
-    <button id="downloadAllBtn" data-href="/api/files/downloadAll"
-            class="btn btn-success me-2">
-      Download alles
-    </button>
-    <a href="/" class="btn btn-secondary">Herlaad pagina</a>
-  </div>
-</main>
+    <div class="d-flex justify-content-end mb-4">
+      <button id="syncBtn" class="btn btn-primary me-2">
+        Synchroniseer
+      </button>
+      <button id="downloadAllBtn" data-href="/api/files/downloadAll"
+              class="btn btn-success me-2">
+        Download alles
+      </button>
+      <a href="/" class="btn btn-secondary">Herlaad pagina</a>
+    </div>
+  </main>
 
   <!-- Bootstrap 5 JS Bundle -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -172,19 +164,11 @@
   <!-- Inline Thymeleaf + Toast JS -->
   <script th:inline="javascript">
     /*<![CDATA[*/
-    // Fetch flash attributes
     const successMsg = /*[[${uploadSuccess}]]*/ '';
     const errorMsg = /*[[${uploadError}]]*/ '';
 
-    /**
-     * Create and show a Bootstrap toast
-     * @param {string} message - The message to display
-     * @param {boolean} isSuccess - true for success (green), false for error (red)
-     * @param {number} delayMs - How long before auto-hide (ms)
-     */
     function showToast(message, isSuccess = true, delayMs = 4000) {
       const container = document.querySelector('.toast-container');
-      // Toast element
       const toastEl = document.createElement('div');
       toastEl.className =
         'toast align-items-center text-bg-' +
@@ -194,114 +178,142 @@
       toastEl.setAttribute('aria-live', 'assertive');
       toastEl.setAttribute('aria-atomic', 'true');
       toastEl.setAttribute('data-bs-delay', delayMs);
-
-      // Inner HTML
       toastEl.innerHTML = `
         <div class="d-flex">
           <div class="toast-body">${message}</div>
-          <button
-            type="button"
-            class="btn-close btn-close-white me-2 m-auto"
-            data-bs-dismiss="toast"
-            aria-label="Close"
-          ></button>
-        </div>
-      `;
+          <button type="button" class="btn-close btn-close-white me-2 m-auto"
+                  data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>`;
       container.appendChild(toastEl);
-
-      // Initialize and show
-      const toast = new bootstrap.Toast(toastEl);
-      toast.show();
+      new bootstrap.Toast(toastEl).show();
     }
 
     document.addEventListener('DOMContentLoaded', () => {
-      if (successMsg) {
-        showToast(successMsg, true);
-      } else if (errorMsg) {
-        showToast(errorMsg, false);
-      }
+      if (successMsg) showToast(successMsg, true);
+      else if (errorMsg) showToast(errorMsg, false);
+    });
+
+    // Download-all button
+    document.addEventListener('DOMContentLoaded', function() {
+      const downloadBtn = document.getElementById('downloadAllBtn');
+      const spinner = document.getElementById('loadingSpinner');
+      downloadBtn?.addEventListener('click', e => {
+        e.preventDefault();
+        const url = downloadBtn.getAttribute('data-href');
+        spinner.style.display = 'flex';
+        fetch(url)
+          .then(res => {
+            if (!res.ok) throw new Error('Download failed');
+            return res.blob();
+          })
+          .then(blob => {
+            const u = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = u; a.download = 'cloudlocker-bestanden.zip';
+            document.body.appendChild(a);
+            a.click(); a.remove(); URL.revokeObjectURL(u);
+          })
+          .catch(err => {
+            console.error(err);
+            showToast('Download alles mislukt', false);
+          })
+          .finally(() => spinner.style.display = 'none');
+      });
     });
     /*]]>*/
-
-    document.addEventListener("DOMContentLoaded", function() {
-        const downloadBtn = document.getElementById('downloadAllBtn');
-        const spinner = document.getElementById('loadingSpinner');
-        if (downloadBtn) {
-            downloadBtn.addEventListener('click', function(e) {
-                e.preventDefault();
-                const url = this.getAttribute('data-href');
-                spinner.style.display = 'flex';
-
-                // Start the download and hide spinner after a delay
-                fetch(url)
-                    .then(response => {
-                        if (response.ok) {
-                            // Trigger download
-                            window.location.href = url;
-                            // Hide spinner after a delay (adjust as needed)
-                            setTimeout(() => {
-                                spinner.style.display = 'none';
-                            }, 3000);
-                        } else {
-                            console.error("Download failed");
-                            spinner.style.display = 'none';
-                        }
-                    })
-                    .catch(error => {
-                        console.error("Error during download:", error);
-                        spinner.style.display = 'none';
-                    });
-            });
-        }
-    });
   </script>
+
+  <!-- Synchroniseer logic -->
   <script>
-  // grab references
-  const syncBtn     = document.getElementById('syncBtn');
-  const spinner     = document.getElementById('loadingSpinner');
-  const syncResult  = document.getElementById('syncResult');
-  const uploadCount = document.getElementById('uploadCount');
-  const downloadCount = document.getElementById('downloadCount');
-  const conflictCount = document.getElementById('conflictCount');
+    // Helper to track downloaded files in localStorage
+    function getDownloadedSet() {
+      const stored = localStorage.getItem('downloadedFiles');
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    }
+    function saveDownloadedSet(set) {
+      localStorage.setItem('downloadedFiles', JSON.stringify([...set]));
+    }
 
-  syncBtn.addEventListener('click', () => {
-    spinner.style.display = 'flex';
-    // call the new syncLocal endpoint
-    fetch('/api/files/syncLocal')
-    .then(async resp => {
-      const json = await resp.json();
+    const syncBtn = document.getElementById('syncBtn');
+    const spinner = document.getElementById('loadingSpinner');
+    const syncResultCard = document.getElementById('syncResult');
+    const uploadCountSpan = document.getElementById('uploadCount');
+    const downloadCountSpan = document.getElementById('downloadCount');
+    const conflictCountSpan = document.getElementById('conflictCount');
 
-      // Map to your existing property names:
-      const toUpload   = json.filesToUpload;
-      const toDownload = json.filesToDownload;
-      const conflicts  = json.conflictFiles;
+    syncBtn.addEventListener('click', () => {
+      spinner.style.display = 'flex';
+      const msgEl = spinner.querySelector('span.ms-2');
+      if(msgEl) msgEl.textContent = 'Bezig met synchroniseren...';
 
-      if (resp.status === 409) {
-        showToast(`Conflicten: ${conflicts.join(', ')}`, false, 8000);
-        return;
-      }
+      // Reset UI
+      syncResultCard.style.display  = 'none';
+      uploadCountSpan.textContent   = '0';
+      downloadCountSpan.textContent = '0';
+      conflictCountSpan.textContent = '0';
 
-      // Update counts in the UI
-      uploadCount.textContent   = toUpload.length;
-      downloadCount.textContent = toDownload.length;
-      conflictCount.textContent = conflicts.length;
-      syncResult.style.display  = 'block';
+      const downloaded = getDownloadedSet();
 
-      // Trigger uploads/downloads
-      toUpload.forEach(name   => {
-        // e.g. POST file to /api/files/upload
-      });
-      toDownload.forEach(name => {
-        window.location.href = `/api/files/download?fileName=${encodeURIComponent(name)}`;
-      });
-    })
-    .catch(err => {
-      showToast('Synchronisatie mislukt', false);
-    })
-    .finally(() => {
-      spinner.style.display = 'none';
+      fetch('/api/files/syncLocal')
+        .then(async resp => {
+          if (!resp.ok) throw new Error(`Serverfout: ${resp.status}`);
+          return resp.json();
+        })
+        .then(result => {
+          const toUpload   = result.filesToUpload || [];
+          const toDownload = (result.filesToDownload || []).filter(name => !downloaded.has(name));
+          const conflicts  = result.conflictFiles || [];
+
+          // Populate counts
+          uploadCountSpan.textContent   = toUpload.length;
+          downloadCountSpan.textContent = toDownload.length;
+          conflictCountSpan.textContent = conflicts.length;
+          syncResultCard.style.display  = 'block';
+
+          // Show toast
+          if (conflicts.length) {
+            showToast(`Conflicten: ${conflicts.join(', ')}`, false, 8000);
+          } else if (toUpload.length || toDownload.length) {
+            showToast('Synchronisatie voltooid.', true);
+          } else {
+            showToast('Alles is al gesynchroniseerd.', true);
+          }
+
+          // Download new files sequentially
+          let rem = toDownload.length;
+          function downloadOne(name) {
+            return fetch(`/api/files/download?fileName=${encodeURIComponent(name)}`)
+              .then(res => {
+                if (!res.ok) throw new Error(`Download mislukt: ${name}`);
+                return res.blob();
+              })
+              .then(blob => {
+                const u = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = u; a.download = name;
+                document.body.appendChild(a);
+                a.click(); a.remove(); URL.revokeObjectURL(u);
+                // mark downloaded
+                downloaded.add(name);
+                saveDownloadedSet(downloaded);
+                rem--;
+                downloadCountSpan.textContent = rem;
+              });
+          }
+
+          // Chain downloads
+          toDownload.reduce((p, name) => p.then(() => downloadOne(name)), Promise.resolve())
+            .catch(err => showToast(err.message, false));
+        })
+        .catch(err => {
+          console.error(err);
+          showToast(err.message, false);
+        })
+        .finally(() => {
+          spinner.style.display = 'none';
+          if(msgEl) msgEl.textContent = 'Alles wordt gedownload...';
+        });
     });
-  });
   </script>
 </body>
 </html>
