@@ -8,6 +8,14 @@ public class SyncResult {
     private List<String> filesToDownload;
     private List<String> conflictFiles;
 
+    public SyncResult() { }
+
+    public SyncResult(List<String> filesToUpload, List<String> filesToDownload, List<String> conflictsFiles) {
+        this.filesToUpload = filesToUpload;
+        this.filesToDownload = filesToDownload;
+        this.conflictFiles = conflictsFiles;
+    }
+
     public List<String> getFilesToUpload() {
         return filesToUpload;
     }
@@ -30,5 +38,15 @@ public class SyncResult {
 
     public void setConflictFiles(List<String> conflictFiles) {
         this.conflictFiles = conflictFiles;
+    }
+
+    public int getUploadCount() {
+        return filesToUpload.size();
+    }
+    public int getDownloadCount() {
+        return filesToDownload.size();
+    }
+    public int getConflictCount() {
+        return conflictFiles.size();
     }
 }
