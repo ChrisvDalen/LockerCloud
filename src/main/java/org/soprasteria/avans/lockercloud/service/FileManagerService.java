@@ -167,42 +167,61 @@ public class FileManagerService {
 
     // Bestaande syncFiles-methode voor conflictbeheer
     public SyncResult syncFiles(List<FileMetadata> clientFiles) {
-        SyncResult result = new SyncResult();
-        List<String> filesToUpload = new ArrayList<>();
-        List<String> filesToDownload = new ArrayList<>();
-        List<String> conflictFiles = new ArrayList<>();
-
+        // Map client by name
         Map<String, FileMetadata> clientMap = clientFiles.stream()
-                .collect(Collectors.toMap(FileMetadata::getFileName, fm -> fm));
+            .collect(Collectors.toMap(FileMetadata::getFileName, fm -> fm));
 
-        List<String> serverFiles = listFiles();
+        // Build server map: checksum + lastModified
+        Map<String, FileMetadata> serverMap = new HashMap<>();
+        for (String name : listFiles()) {
+            Path path = storageLocation.resolve(name);
+            try {
+                long lastMod = Files.getLastModifiedTime(path).toMillis();
+                String checksum = calculateChecksum(path);
+                FileMetadata meta = new FileMetadata();
+                meta.setFileName(name);
+                meta.setChecksum(checksum);
+                meta.setLastModified(lastMod);
+                serverMap.put(name, meta);
+            } catch (IOException e) {
+                throw new FileStorageException("Error reading server metadata for " + name, e);
+            }
+        }
 
-        for (FileMetadata clientFile : clientFiles) {
-            Path serverFilePath = storageLocation.resolve(clientFile.getFileName());
-            if (Files.exists(serverFilePath)) {
-                try {
-                    String serverChecksum = calculateChecksum(serverFilePath);
-                    if (!serverChecksum.equals(clientFile.getChecksum())) {
-                        conflictFiles.add(clientFile.getFileName());
-                    }
-                } catch (IOException e) {
-                    throw new FileStorageException("Error computing checksum for file " + clientFile.getFileName(), e);
-                }
+        // Union of file names
+        Set<String> all = new HashSet<>();
+        all.addAll(clientMap.keySet());
+        all.addAll(serverMap.keySet());
+
+        List<String> toUpload = new ArrayList<>();
+        List<String> toDownload = new ArrayList<>();
+        List<String> conflicts = new ArrayList<>();
+
+        for (String name : all) {
+            FileMetadata c = clientMap.get(name);
+            FileMetadata s = serverMap.get(name);
+
+            if (s == null) {
+                toUpload.add(name);
+                continue;
+            }
+            if (c == null) {
+                toDownload.add(name);
+                continue;
+            }
+            if (c.getChecksum().equals(s.getChecksum())) {
+                continue;
+            }
+            if (c.getLastModified() > s.getLastModified()) {
+                toUpload.add(name);
+            } else if (s.getLastModified() > c.getLastModified()) {
+                toDownload.add(name);
             } else {
-                filesToUpload.add(clientFile.getFileName());
+                conflicts.add(name);
             }
         }
 
-        for (String serverFileName : serverFiles) {
-            if (!clientMap.containsKey(serverFileName)) {
-                filesToDownload.add(serverFileName);
-            }
-        }
-
-        result.setFilesToUpload(filesToUpload);
-        result.setFilesToDownload(filesToDownload);
-        result.setConflictFiles(conflictFiles);
-        return result;
+        return new SyncResult(toUpload, toDownload, conflicts);
     }
 
     // Helper om MD5-checksum te berekenen
@@ -257,4 +276,32 @@ public class FileManagerService {
         SyncResult result = syncLocalClientFiles();
         return CompletableFuture.completedFuture(result);
     }
+
+    public void saveFileTransactional(MultipartFile file, String expectedChecksum) {
+        String originalFileName = file.getOriginalFilename();
+        if (originalFileName == null) {
+            throw new FileStorageException("File name is null");
+        }
+
+        Path tempPath = storageLocation.resolve(originalFileName + ".tmp");
+        Path finalPath = storageLocation.resolve(originalFileName);
+
+        try (InputStream in = file.getInputStream()) {
+            Files.copy(in, tempPath, StandardCopyOption.REPLACE_EXISTING);
+            String actualChecksum = calculateChecksum(tempPath);
+
+            if (!actualChecksum.equalsIgnoreCase(expectedChecksum)) {
+                Files.deleteIfExists(tempPath);
+                throw new FileStorageException("Checksum mismatch for file " + originalFileName);
+            }
+
+            Files.move(tempPath, finalPath, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            try {
+                Files.deleteIfExists(tempPath);
+            } catch (IOException ignore) {}
+            throw new FileStorageException("Failed transactional save for " + originalFileName, e);
+        }
+    }
+
 }

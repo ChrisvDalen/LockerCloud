@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.soprasteria.avans.lockercloud.dto.SyncResult;
+import org.soprasteria.avans.lockercloud.exception.FileStorageException;
 import org.soprasteria.avans.lockercloud.model.FileMetadata;
 import org.soprasteria.avans.lockercloud.service.FileManagerService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,6 +12,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.annotation.Secured;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -141,9 +143,28 @@ public class FileController {
     public ResponseEntity<?> syncFiles(@RequestBody List<FileMetadata> clientFiles) {
         try {
             SyncResult result = fileManagerService.syncFiles(clientFiles);
+            if (!result.getConflictFiles().isEmpty()) {
+                return ResponseEntity
+                        .status(HttpStatus.CONFLICT)
+                        .body(result);
+            }
             return ResponseEntity.ok(result);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Error syncing files: " + e.getMessage());
+        } catch (FileStorageException e) {
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error syncing files: " + e.getMessage());
         }
+    }
+
+    @GetMapping("/syncLocal")
+    @Operation(summary = "Synchronize local client folder with server")
+    public ResponseEntity<SyncResult> syncLocal() {
+        SyncResult result = fileManagerService.syncLocalClientFiles();
+        if (!result.getConflictFiles().isEmpty()) {
+            return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(result);
+        }
+        return ResponseEntity.ok(result);
     }
 }
