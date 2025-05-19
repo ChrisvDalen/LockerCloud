@@ -1,11 +1,21 @@
 package org.soprasteria.avans.lockercloud;
 
-import org.springframework.boot.SpringApplication;
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
 
-public class TestLockerCloudApplication {
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
-    public static void main(String[] args) {
-        SpringApplication.from(LockerCloudApplication::main).with(TestcontainersConfiguration.class).run(args);
+@SpringBootTest(classes = LockerCloudApplication.class)
+class LockerCloudApplicationTest {
+
+    @Test
+    void contextLoads() {
+        // Application context should start without any exceptions
     }
 
+    @Test
+    void mainMethod_ShouldNotThrowException() {
+        assertDoesNotThrow(() -> LockerCloudApplication.main(new String[]{}),
+                "Running the main method should not throw any exception");
+    }
 }

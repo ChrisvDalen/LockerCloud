@@ -1,35 +1,54 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project
+        xmlns="http://maven.apache.org/POM/4.0.0"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+      http://maven.apache.org/POM/4.0.0
+      https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
   <modelVersion>4.0.0</modelVersion>
+
   <parent>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
     <version>3.4.4</version>
-    <relativePath /> <!-- lookup parent from repository -->
+    <relativePath/>
   </parent>
+
   <groupId>org.soprasteria.avans</groupId>
   <artifactId>LockerCloud</artifactId>
   <version>0.0.1-SNAPSHOT</version>
   <name>LockerCloud</name>
   <description>LockerCloud</description>
-  <url />
-  <licenses>
-    <license />
-  </licenses>
-  <developers>
-    <developer />
-  </developers>
-  <scm>
-    <connection />
-    <developerConnection />
-    <tag />
-    <url />
-  </scm>
+
   <properties>
+    <!-- Java & Spring Boot -->
     <java.version>17</java.version>
+    <spring-boot.version>3.4.4</spring-boot.version>
+
+    <!-- Spring REST Docs -->
+    <spring-restdocs.version>3.0.3</spring-restdocs.version>
+
+    <!-- Lombok -->
+    <lombok.version>1.18.30</lombok.version>
+    <maven-compiler-plugin.version>3.11.0</maven-compiler-plugin.version>
   </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <!-- Import de juiste BOM van Spring REST Docs -->
+      <dependency>
+        <groupId>org.springframework.restdocs</groupId>
+        <artifactId>spring-restdocs-bom</artifactId>
+        <version>${spring-restdocs.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
   <dependencies>
+    <!-- Spring starters -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-actuator</artifactId>
@@ -46,52 +65,53 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-websocket</artifactId>
     </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-thymeleaf</artifactId>
+    </dependency>
 
+    <!-- OpenAPI / Swagger UI -->
     <dependency>
       <groupId>org.springdoc</groupId>
       <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
       <version>2.2.0</version>
     </dependency>
 
-    <dependency>
-      <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot-starter-thymeleaf</artifactId>
-    </dependency>
-
+    <!-- Retry & Aspects -->
     <dependency>
       <groupId>org.springframework.retry</groupId>
       <artifactId>spring-retry</artifactId>
       <version>2.0.3</version>
     </dependency>
-
     <dependency>
       <groupId>org.springframework</groupId>
       <artifactId>spring-aspects</artifactId>
       <version>6.1.5</version>
     </dependency>
 
-    <dependency>
-      <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot-devtools</artifactId>
-      <scope>runtime</scope>
-      <optional>true</optional>
-    </dependency>
-    <dependency>
-      <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot-docker-compose</artifactId>
-      <scope>runtime</scope>
-      <optional>true</optional>
-    </dependency>
+    <!-- Config Processor -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-configuration-processor</artifactId>
       <optional>true</optional>
     </dependency>
+
+    <!-- Lombok -->
     <dependency>
       <groupId>org.projectlombok</groupId>
       <artifactId>lombok</artifactId>
-      <optional>true</optional>
+      <version>${lombok.version}</version>
+      <scope>provided</scope>
     </dependency>
+
+    <!-- Spring REST Docs MockMvc (versie komt uit de BOM) -->
+    <dependency>
+      <groupId>org.springframework.restdocs</groupId>
+      <artifactId>spring-restdocs-mockmvc</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- Test -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-test</artifactId>
@@ -100,11 +120,6 @@
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-testcontainers</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.springframework.restdocs</groupId>
-      <artifactId>spring-restdocs-mockmvc</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -120,23 +135,41 @@
   </dependencies>
 
   <build>
+    <pluginManagement>
+      <plugins>
+        <!-- Voor mvn dependency:tree -->
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-dependency-plugin</artifactId>
+          <version>3.6.0</version>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+
     <plugins>
+      <!-- Compiler Plugin -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
+        <version>${maven-compiler-plugin.version}</version>
         <configuration>
+          <release>${java.version}</release>
           <annotationProcessorPaths>
-            <path>
-              <groupId>org.springframework.boot</groupId>
-              <artifactId>spring-boot-configuration-processor</artifactId>
-            </path>
             <path>
               <groupId>org.projectlombok</groupId>
               <artifactId>lombok</artifactId>
+              <version>${lombok.version}</version>
+            </path>
+            <path>
+              <groupId>org.springframework.boot</groupId>
+              <artifactId>spring-boot-configuration-processor</artifactId>
+              <version>${spring-boot.version}</version>
             </path>
           </annotationProcessorPaths>
         </configuration>
       </plugin>
+
+      <!-- Asciidoctor Plugin -->
       <plugin>
         <groupId>org.asciidoctor</groupId>
         <artifactId>asciidoctor-maven-plugin</artifactId>
@@ -162,6 +195,8 @@
           </dependency>
         </dependencies>
       </plugin>
+
+      <!-- Spring Boot Plugin -->
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
@@ -176,5 +211,4 @@
       </plugin>
     </plugins>
   </build>
-
 </project>
