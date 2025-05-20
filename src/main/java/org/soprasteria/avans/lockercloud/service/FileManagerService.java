@@ -14,6 +14,7 @@ import java.nio.file.*;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
@@ -42,14 +43,25 @@ public class FileManagerService {
     // Bestaande methoden (saveFile, getFile, deleteFile, listFiles) blijven grotendeels hetzelfde
 
     public void saveFile(MultipartFile file) {
+         if (file.isEmpty()) {
+            throw new FileStorageException("Cannot save an empty file.");
+        }
+        String originalFilename = file.getOriginalFilename();
+        if (originalFilename == null || originalFilename.trim().isEmpty()) {
+            throw new FileStorageException("File name cannot be null or empty.");
+        }
+        // Normalize filename to prevent directory traversal issues
+        String normalizedFilename = Paths.get(originalFilename).getFileName().toString();
+
+
         if (file.getSize() > CHUNK_THRESHOLD) {
             saveLargeFile(file);
         } else {
             try {
-                Path targetLocation = storageLocation.resolve(file.getOriginalFilename());
+                Path targetLocation = storageLocation.resolve(normalizedFilename);
                 Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
             } catch (IOException e) {
-                throw new FileStorageException("Error saving file " + file.getOriginalFilename(), e);
+                throw new FileStorageException("Error saving file " + normalizedFilename, e);
             }
         }
     }
@@ -59,32 +71,40 @@ public class FileManagerService {
         saveFile(file);
     }
 
-    @Retryable
-    public void recoverSaveFile(MultipartFile file, IOException e) {
+    public void recoverSaveFile(IOException e, MultipartFile file) { // Corrected signature
         String fileName = file.getOriginalFilename();
         if (fileName != null) {
-            deleteFileChunks(fileName);
+            deleteFileChunks(fileName); // Also delete the potentially incomplete main file if not chunked
+            try {
+                Files.deleteIfExists(storageLocation.resolve(fileName));
+            } catch (IOException ex) {
+                System.err.println("Failed to delete main file during recovery: " + fileName);
+            }
         }
-        throw new FileStorageException("Failed to upload file after retries: " + fileName, e);
+        throw new FileStorageException("Failed to upload file '" + fileName + "' after retries.", e);
     }
 
     private void saveLargeFile(MultipartFile file) {
-        String originalFileName = file.getOriginalFilename();
-        if (originalFileName == null) {
+        String originalFileName = Paths.get(file.getOriginalFilename()).getFileName().toString(); // Normalize
+        if (originalFileName == null) { // Should have been caught by saveFile
             throw new FileStorageException("File name is null");
         }
         try (InputStream inputStream = file.getInputStream()) {
             byte[] buffer = new byte[(int) CHUNK_SIZE];
             int bytesRead;
             int chunkIndex = 1;
-            while ((bytesRead = inputStream.read(buffer)) != -1) {
+            while ((bytesRead = inputStream.read(buffer, 0, Math.min(buffer.length, inputStream.available()))) != -1) {
+                 if (bytesRead == 0 && inputStream.available() == 0) break; // Ensure termination
                 String chunkFileName = originalFileName + ".part" + chunkIndex;
-                Path chunkPath = storageLocation.resolve(chunkFileName);
+                Path chunkPath = storageLocation.resolve(chunkFileName); // Chunks go to master storage
                 try (OutputStream os = Files.newOutputStream(chunkPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
                     os.write(buffer, 0, bytesRead);
                 }
                 chunkIndex++;
+                 if (inputStream.available() == 0) break; // Break if no more data is available
             }
+            // After saving all chunks, you might want to assemble the file immediately
+            // or have a separate process/endpoint for it. The current getFile() assembles on demand.
         } catch (IOException e) {
             deleteFileChunks(originalFileName);
             throw new FileStorageException("Error saving large file " + originalFileName, e);
@@ -92,36 +112,40 @@ public class FileManagerService {
     }
 
     private void deleteFileChunks(String originalFileName) {
+        if (originalFileName == null) return;
+        String normalizedOriginalFileName = Paths.get(originalFileName).getFileName().toString();
         try (Stream<Path> stream = Files.list(storageLocation)) {
-            stream.filter(path -> path.getFileName().toString().startsWith(originalFileName + ".part"))
+            stream.filter(path -> path.getFileName().toString().startsWith(normalizedOriginalFileName + ".part"))
                     .forEach(path -> {
                         try {
                             Files.deleteIfExists(path);
                         } catch (IOException ex) {
-                            System.err.println("Failed to delete chunk " + path.getFileName().toString());
+                            System.err.println("Failed to delete chunk " + path.getFileName().toString() + ": " + ex.getMessage());
                         }
                     });
         } catch (IOException e) {
-            // Log indien nodig
+             System.err.println("Error listing directory for deleting chunks of " + normalizedOriginalFileName + ": " + e.getMessage());
         }
     }
 
     public byte[] getFile(String fileName) {
-        Path filePath = storageLocation.resolve(fileName);
+        String normalizedFileName = Paths.get(fileName).getFileName().toString(); // Normalize
+        Path filePath = storageLocation.resolve(normalizedFileName);
         if (Files.exists(filePath)) {
             try {
                 return Files.readAllBytes(filePath);
             } catch (IOException e) {
-                throw new FileStorageException("Error reading file " + fileName, e);
+                throw new FileStorageException("Error reading file " + normalizedFileName, e);
             }
         } else {
+            // Attempt to reassemble from chunks if main file not found
             try (Stream<Path> stream = Files.list(storageLocation)) {
                 List<Path> chunks = stream
-                        .filter(path -> path.getFileName().toString().startsWith(fileName + ".part"))
-                        .sorted(Comparator.comparingInt(p -> extractChunkIndex(p.getFileName().toString(), fileName)))
+                        .filter(path -> path.getFileName().toString().startsWith(normalizedFileName + ".part"))
+                        .sorted(Comparator.comparingInt(p -> extractChunkIndex(p.getFileName().toString(), normalizedFileName)))
                         .collect(Collectors.toList());
                 if (chunks.isEmpty()) {
-                    throw new FileStorageException("File not found: " + fileName);
+                    throw new FileStorageException("File not found (and no chunks): " + normalizedFileName);
                 }
                 ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
                 for (Path chunk : chunks) {
@@ -130,27 +154,39 @@ public class FileManagerService {
                 }
                 return outputStream.toByteArray();
             } catch (IOException e) {
-                throw new FileStorageException("Error reading file chunks for " + fileName, e);
+                throw new FileStorageException("Error reading file chunks for " + normalizedFileName, e);
             }
         }
     }
 
     private int extractChunkIndex(String chunkFileName, String originalFileName) {
         String prefix = originalFileName + ".part";
-        try {
-            return Integer.parseInt(chunkFileName.substring(prefix.length()));
-        } catch (NumberFormatException e) {
-            return Integer.MAX_VALUE;
+        if (chunkFileName.startsWith(prefix)) {
+            try {
+                return Integer.parseInt(chunkFileName.substring(prefix.length()));
+            } catch (NumberFormatException e) {
+                // Malformed chunk name
+                System.err.println("Malformed chunk index for: " + chunkFileName);
+                return Integer.MAX_VALUE; // Sorts malformed to the end
+            }
         }
+        return Integer.MAX_VALUE; // Not a valid chunk name for this original file
     }
 
     public void deleteFile(String fileName) {
+        if (fileName == null || fileName.trim().isEmpty()) return;
+        String normalizedFileName = Paths.get(fileName).getFileName().toString(); // Normalize
         try {
-            Path filePath = storageLocation.resolve(fileName);
+            Path filePath = storageLocation.resolve(normalizedFileName);
             Files.deleteIfExists(filePath);
-            deleteFileChunks(fileName);
+            deleteFileChunks(normalizedFileName); // Delete any associated chunks
+
+            // Also delete from clientLocalLocation if it exists there to keep them in sync
+            Path clientSyncFilePath = clientLocalLocation.resolve(normalizedFileName);
+            Files.deleteIfExists(clientSyncFilePath);
+            System.out.println("Deleted '" + normalizedFileName + "' from master and client sync locations.");
         } catch (IOException e) {
-            throw new FileStorageException("Error deleting file " + fileName, e);
+            throw new FileStorageException("Error deleting file " + normalizedFileName, e);
         }
     }
 
@@ -158,69 +194,53 @@ public class FileManagerService {
         try (Stream<Path> stream = Files.list(storageLocation)) {
             return stream.filter(Files::isRegularFile)
                     .map(path -> path.getFileName().toString())
-                    .filter(name -> !name.contains(".part"))
+                    .filter(name -> !name.contains(".part")) // Exclude chunk files from list
+                    .sorted() // Sort for consistent order
                     .collect(Collectors.toList());
         } catch (IOException e) {
-            throw new FileStorageException("Error listing files", e);
+            System.err.println("Error listing files from master storage: " + e.getMessage());
+            return Collections.emptyList();
         }
     }
 
-    // Bestaande syncFiles-methode voor conflictbeheer
-    public SyncResult syncFiles(List<FileMetadata> clientFiles) {
-        // Map client by name
-        Map<String, FileMetadata> clientMap = clientFiles.stream()
-            .collect(Collectors.toMap(FileMetadata::getFileName, fm -> fm));
+    public SyncResult syncFiles(List<FileMetadata> clientProvidedMetadataList) {
+        Map<String, FileMetadata> clientMap = clientProvidedMetadataList.stream()
+            .collect(Collectors.toMap(FileMetadata::getFileName, fm -> fm, (fm1, fm2) -> fm1)); // Handle duplicates if any
 
-        // Build server map: checksum + lastModified
-        Map<String, FileMetadata> serverMap = new HashMap<>();
-        for (String name : listFiles()) {
-            Path path = storageLocation.resolve(name);
-            try {
-                long lastMod = Files.getLastModifiedTime(path).toMillis();
-                String checksum = calculateChecksum(path);
-                FileMetadata meta = new FileMetadata();
-                meta.setFileName(name);
-                meta.setChecksum(checksum);
-                meta.setLastModified(lastMod);
-                serverMap.put(name, meta);
-            } catch (IOException e) {
-                throw new FileStorageException("Error reading server metadata for " + name, e);
-            }
-        }
+        Map<String, FileMetadata> serverMasterMap = getDirectoryMetadata(this.storageLocation); // Use helper
 
-        // Union of file names
-        Set<String> all = new HashSet<>();
-        all.addAll(clientMap.keySet());
-        all.addAll(serverMap.keySet());
+        Set<String> allFileNames = new HashSet<>();
+        allFileNames.addAll(clientMap.keySet());
+        allFileNames.addAll(serverMasterMap.keySet());
 
-        List<String> toUpload = new ArrayList<>();
-        List<String> toDownload = new ArrayList<>();
+        List<String> toUpload = new ArrayList<>();    // Files client has that server doesn't, or client is newer
+        List<String> toDownload = new ArrayList<>();  // Files server has that client doesn't, or server is newer
         List<String> conflicts = new ArrayList<>();
 
-        for (String name : all) {
-            FileMetadata c = clientMap.get(name);
-            FileMetadata s = serverMap.get(name);
+        for (String name : allFileNames) {
+            FileMetadata cMeta = clientMap.get(name);
+            FileMetadata sMeta = serverMasterMap.get(name);
 
-            if (s == null) {
-                toUpload.add(name);
+            if (sMeta == null) {
+                if (cMeta != null) toUpload.add(name);
                 continue;
             }
-            if (c == null) {
+            if (cMeta == null) {
                 toDownload.add(name);
                 continue;
             }
-            if (c.getChecksum().equals(s.getChecksum())) {
+            if (cMeta.getChecksum() != null && sMeta.getChecksum() != null &&
+                cMeta.getChecksum().equals(sMeta.getChecksum())) {
                 continue;
             }
-            if (c.getLastModified() > s.getLastModified()) {
+            if (cMeta.getLastModified() > sMeta.getLastModified()) {
                 toUpload.add(name);
-            } else if (s.getLastModified() > c.getLastModified()) {
+            } else if (sMeta.getLastModified() > cMeta.getLastModified()) {
                 toDownload.add(name);
             } else {
                 conflicts.add(name);
             }
         }
-
         return new SyncResult(toUpload, toDownload, conflicts);
     }
 
@@ -279,12 +299,13 @@ public class FileManagerService {
 
     public void saveFileTransactional(MultipartFile file, String expectedChecksum) {
         String originalFileName = file.getOriginalFilename();
-        if (originalFileName == null) {
-            throw new FileStorageException("File name is null");
+        if (originalFileName == null || originalFileName.trim().isEmpty()) {
+            throw new FileStorageException("File name is null or empty for transactional save.");
         }
+        String normalizedFileName = Paths.get(originalFileName).getFileName().toString(); // Normalize
 
-        Path tempPath = storageLocation.resolve(originalFileName + ".tmp");
-        Path finalPath = storageLocation.resolve(originalFileName);
+        Path tempPath = storageLocation.resolve(normalizedFileName + ".tmp");
+        Path finalPath = storageLocation.resolve(normalizedFileName);
 
         try (InputStream in = file.getInputStream()) {
             Files.copy(in, tempPath, StandardCopyOption.REPLACE_EXISTING);
@@ -292,16 +313,175 @@ public class FileManagerService {
 
             if (!actualChecksum.equalsIgnoreCase(expectedChecksum)) {
                 Files.deleteIfExists(tempPath);
-                throw new FileStorageException("Checksum mismatch for file " + originalFileName);
+                throw new FileStorageException("Checksum mismatch for file " + normalizedFileName);
             }
-
             Files.move(tempPath, finalPath, StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException e) {
             try {
                 Files.deleteIfExists(tempPath);
-            } catch (IOException ignore) {}
-            throw new FileStorageException("Failed transactional save for " + originalFileName, e);
+            } catch (IOException ignored) {
+                 System.err.println("Failed to delete temp file " + tempPath + " during transactional save error handling.");
+            }
+            throw new FileStorageException("Failed transactional save for " + normalizedFileName, e);
         }
     }
 
+    public SyncResult analyzeLocalClientDifferences() {
+        List<FileMetadata> clientLocalFilesMetadata = new ArrayList<>();
+        try (Stream<Path> stream = Files.list(clientLocalLocation)) {
+            stream.filter(Files::isRegularFile)
+                  .filter(path -> !path.getFileName().toString().contains(".part"))
+                  .forEach(path -> {
+                try {
+                    String fileName = path.getFileName().toString();
+                    long fileSize = Files.size(path);
+                    String checksum = calculateChecksum(path);
+                    LocalDateTime fileTime = LocalDateTime.ofInstant(Files.getLastModifiedTime(path).toInstant(), ZoneId.systemDefault());
+                    long lastMod = Files.getLastModifiedTime(path).toMillis();
+                    
+                    FileMetadata meta = new FileMetadata(fileName, checksum, fileSize, fileTime, lastMod);
+                    clientLocalFilesMetadata.add(meta);
+                } catch (IOException e) {
+                    System.err.println("Error generating metadata for client file '" + path.getFileName().toString() + "': " + e.getMessage());
+                }
+            });
+        } catch (IOException e) {
+            throw new FileStorageException("Error reading client local sync directory for analysis", e);
+        }
+        // Compare this clientLocalFilesMetadata with the server's master storage
+        return syncFiles(clientLocalFilesMetadata);
+    }
+
+    @Async
+    public CompletableFuture<SyncResult> performServerSideLocalSyncAsync() { // Changed to call the new method
+        SyncResult result = performServerSideLocalSync();
+        return CompletableFuture.completedFuture(result);
+    }
+
+    /**
+     * Generates a map of FileMetadata for all regular files in a given directory.
+     * Skips .part files.
+     * @param directoryPath The path to the directory to scan.
+     * @return A map where keys are file names and values are their FileMetadata.
+     */
+    private Map<String, FileMetadata> getDirectoryMetadata(Path directoryPath) {
+        Map<String, FileMetadata> metadataMap = new HashMap<>();
+        if (!Files.exists(directoryPath) || !Files.isDirectory(directoryPath)) {
+            System.err.println("Metadata Scan: Directory does not exist or is not a directory: " + directoryPath);
+            return metadataMap;
+        }
+        try (Stream<Path> stream = Files.list(directoryPath)) {
+            stream.filter(Files::isRegularFile)
+                  .filter(path -> !path.getFileName().toString().contains(".part")) // Skip chunk files
+                  .forEach(filePath -> {
+                try {
+                    String name = filePath.getFileName().toString();
+                    long lastModMillis = Files.getLastModifiedTime(filePath).toMillis();
+                    String checksum = calculateChecksum(filePath);
+                    long fileSize = Files.size(filePath);
+                    LocalDateTime fileTimestamp = LocalDateTime.ofInstant(
+                            Files.getLastModifiedTime(filePath).toInstant(), ZoneId.systemDefault()
+                    );
+
+                    // Using the full constructor for FileMetadata
+                    FileMetadata meta = new FileMetadata(name, checksum, fileSize, fileTimestamp, lastModMillis);
+                    metadataMap.put(name, meta);
+                } catch (IOException e) {
+                    System.err.println("Error generating metadata for file '" + filePath.getFileName() +
+                                       "' in directory '" + directoryPath + "': " + e.getMessage());
+                }
+            });
+        } catch (IOException e) {
+            System.err.println("Error listing directory '" + directoryPath + "': " + e.getMessage());
+        }
+        return metadataMap;
+    }
+
+    /**
+     * Performs a server-side synchronization between the primary storageLocation (master)
+     * and the clientLocalLocation (local mirror).
+     * It copies files as needed to make clientLocalLocation a reflection of storageLocation,
+     * and vice-versa, based on file differences.
+     *
+     * @return SyncResult summarizing the operations performed.
+     */
+    public SyncResult performServerSideLocalSync() {
+        System.out.println("Performing server-side local sync...");
+        Map<String, FileMetadata> clientSyncFilesMetadata = getDirectoryMetadata(this.clientLocalLocation);
+        Map<String, FileMetadata> serverMasterFilesMetadata = getDirectoryMetadata(this.storageLocation);
+
+        Set<String> allFileNames = new HashSet<>();
+        allFileNames.addAll(clientSyncFilesMetadata.keySet());
+        allFileNames.addAll(serverMasterFilesMetadata.keySet());
+
+        List<String> filesToCopyToClientLocal = new ArrayList<>();
+        List<String> filesToCopyToServerMaster = new ArrayList<>();
+        List<String> conflictFiles = new ArrayList<>();
+
+        for (String name : allFileNames) {
+            FileMetadata clientMeta = clientSyncFilesMetadata.get(name);
+            FileMetadata serverMeta = serverMasterFilesMetadata.get(name);
+
+            if (serverMeta == null) {
+                if (clientMeta != null) {
+                    filesToCopyToServerMaster.add(name);
+                }
+                continue;
+            }
+            if (clientMeta == null) {
+                filesToCopyToClientLocal.add(name);
+                continue;
+            }
+
+            // File exists in both locations, compare them
+            // Ensure checksums are not null before comparing
+            if (clientMeta.getChecksum() != null && serverMeta.getChecksum() != null &&
+                clientMeta.getChecksum().equals(serverMeta.getChecksum())) {
+                continue;
+            }
+
+            if (clientMeta.getLastModified() > serverMeta.getLastModified()) {
+                filesToCopyToServerMaster.add(name);
+            } else if (serverMeta.getLastModified() > clientMeta.getLastModified()) {
+                filesToCopyToClientLocal.add(name);
+            } else {
+                conflictFiles.add(name);
+            }
+        }
+
+        // --- Perform actual file copy operations ---
+        List<String> successfullyCopiedToClient = new ArrayList<>();
+        for (String fileName : filesToCopyToClientLocal) {
+            try {
+                Path sourcePath = storageLocation.resolve(fileName);
+                Path destinationPath = clientLocalLocation.resolve(fileName);
+                Files.copy(sourcePath, destinationPath, StandardCopyOption.REPLACE_EXISTING);
+                successfullyCopiedToClient.add(fileName);
+                System.out.println("SYNC: Copied '" + fileName + "' from MASTER_STORAGE to CLIENT_SYNC_DIR.");
+            } catch (IOException e) {
+                System.err.println("SYNC: FAILED to copy '" + fileName + "' to CLIENT_SYNC_DIR: " + e.getMessage());
+                conflictFiles.add(fileName + " (copy to clientSync failed)"); // Add to conflicts if copy fails
+            }
+        }
+
+        List<String> successfullyCopiedToServer = new ArrayList<>();
+        for (String fileName : filesToCopyToServerMaster) {
+            try {
+                Path sourcePath = clientLocalLocation.resolve(fileName);
+                Path destinationPath = storageLocation.resolve(fileName);
+                Files.copy(sourcePath, destinationPath, StandardCopyOption.REPLACE_EXISTING);
+                successfullyCopiedToServer.add(fileName);
+                System.out.println("SYNC: Copied '" + fileName + "' from CLIENT_SYNC_DIR to MASTER_STORAGE.");
+            } catch (IOException e) {
+                System.err.println("SYNC: FAILED to copy '" + fileName + "' to MASTER_STORAGE: " + e.getMessage());
+                conflictFiles.add(fileName + " (copy to serverStorage failed)"); // Add to conflicts
+            }
+        }
+
+        System.out.println("Server-side local sync completed. Copied to client: " + successfullyCopiedToClient.size() +
+                           ", Copied to server: " + successfullyCopiedToServer.size() +
+                           ", Conflicts: " + conflictFiles.size());
+
+        return new SyncResult(successfullyCopiedToServer, successfullyCopiedToClient, conflictFiles);
+    }
 }

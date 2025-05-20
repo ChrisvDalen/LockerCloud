@@ -24,8 +24,9 @@ class FileMetadataTest {
         String checksum = "abc123";
         long size = 1024L;
         LocalDateTime now = LocalDateTime.of(2025, 5, 17, 12, 30);
+        long lastModified = System.currentTimeMillis();
 
-        FileMetadata metadata = new FileMetadata(name, checksum, size, now);
+        FileMetadata metadata = new FileMetadata(name, checksum, size, now, lastModified);
 
         assertEquals(name, metadata.getFileName(), "fileName should match constructor argument");
         assertEquals(checksum, metadata.getChecksum(), "checksum should match constructor argument");

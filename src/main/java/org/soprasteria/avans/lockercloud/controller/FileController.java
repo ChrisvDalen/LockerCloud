@@ -12,7 +12,6 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.annotation.Secured;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -20,6 +19,7 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.Collections;
 import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -159,12 +159,18 @@ public class FileController {
     @GetMapping("/syncLocal")
     @Operation(summary = "Synchronize local client folder with server")
     public ResponseEntity<SyncResult> syncLocal() {
-        SyncResult result = fileManagerService.syncLocalClientFiles();
-        if (!result.getConflictFiles().isEmpty()) {
-            return ResponseEntity
-                .status(HttpStatus.CONFLICT)
-                .body(result);
+        try {
+            SyncResult result = fileManagerService.performServerSideLocalSync();
+            
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            System.err.println("Error during server-side local sync: " + e.getMessage());
+
+            List<String> emptyList = Collections.emptyList();
+            List<String> errorConflict = Collections.singletonList("Server error during sync: " + e.getMessage());
+            
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                                .body(new SyncResult(emptyList, emptyList, errorConflict));
         }
-        return ResponseEntity.ok(result);
     }
 }
