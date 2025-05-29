@@ -85,31 +85,56 @@ public class FileManagerService {
     }
 
     private void saveLargeFile(MultipartFile file) {
-        String originalFileName = Paths.get(file.getOriginalFilename()).getFileName().toString(); // Normalize
-        if (originalFileName == null) { // Should have been caught by saveFile
-            throw new FileStorageException("File name is null");
-        }
+        String originalFileName = Paths.get(file.getOriginalFilename()).getFileName().toString();
         try (InputStream inputStream = file.getInputStream()) {
             byte[] buffer = new byte[(int) CHUNK_SIZE];
             int bytesRead;
             int chunkIndex = 1;
-            while ((bytesRead = inputStream.read(buffer, 0, Math.min(buffer.length, inputStream.available()))) != -1) {
-                 if (bytesRead == 0 && inputStream.available() == 0) break; // Ensure termination
-                String chunkFileName = originalFileName + ".part" + chunkIndex;
-                Path chunkPath = storageLocation.resolve(chunkFileName); // Chunks go to master storage
-                try (OutputStream os = Files.newOutputStream(chunkPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
+            List<Path> writtenChunks = new ArrayList<>();
+
+            // 1) Schrijf alle chunks
+            while ((bytesRead = inputStream.read(buffer)) != -1) {
+                String chunkName = originalFileName + ".part" + chunkIndex++;
+                Path chunkPath = storageLocation.resolve(chunkName);
+                try (OutputStream os = Files.newOutputStream(chunkPath,
+                        StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
                     os.write(buffer, 0, bytesRead);
                 }
-                chunkIndex++;
-                 if (inputStream.available() == 0) break; // Break if no more data is available
+                writtenChunks.add(chunkPath);
             }
-            // After saving all chunks, you might want to assemble the file immediately
-            // or have a separate process/endpoint for it. The current getFile() assembles on demand.
+
+            // 2) Assembleer ze meteen in één bestand
+            Path finalPath = storageLocation.resolve(originalFileName);
+            try (OutputStream finalOs = Files.newOutputStream(finalPath,
+                    StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
+                // sorteren op index zodat de volgorde klopt
+                writtenChunks.stream()
+                        .sorted(Comparator.comparing(p -> {
+                            String s = p.getFileName().toString()
+                                    .replace(originalFileName + ".part", "");
+                            return Integer.parseInt(s);
+                        }))
+                        .forEach(chunkPath -> {
+                            try {
+                                Files.copy(chunkPath, finalOs);
+                            } catch (IOException e) {
+                                throw new UncheckedIOException(e);
+                            }
+                        });
+            }
+
+            // 3) (Optioneel) verwijder de chunk-bestanden
+            for (Path chunk : writtenChunks) {
+                Files.deleteIfExists(chunk);
+            }
+
         } catch (IOException e) {
+            // bestaande cleanup
             deleteFileChunks(originalFileName);
             throw new FileStorageException("Error saving large file " + originalFileName, e);
         }
     }
+
 
     private void deleteFileChunks(String originalFileName) {
         if (originalFileName == null) return;
