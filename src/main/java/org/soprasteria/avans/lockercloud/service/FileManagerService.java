@@ -1,5 +1,6 @@
 package org.soprasteria.avans.lockercloud.service;
 
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import org.soprasteria.avans.lockercloud.dto.SyncResult;
 import org.soprasteria.avans.lockercloud.exception.FileStorageException;
 import org.soprasteria.avans.lockercloud.model.FileMetadata;
@@ -153,6 +154,12 @@ public class FileManagerService {
         }
     }
 
+    public byte[] getFileFallback(String fileName, Throwable t) {
+        System.err.println("CircuitBreaker tripped on getFile: " + t.getMessage());
+        return new byte[0]; // of null, of een specifieke error-indicator
+    }
+
+    @CircuitBreaker(name = "fileService", fallbackMethod = "getFileFallback")
     public byte[] getFile(String fileName) {
         String normalizedFileName = Paths.get(fileName).getFileName().toString(); // Normalize
         Path filePath = storageLocation.resolve(normalizedFileName);
