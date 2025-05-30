@@ -1,9 +1,11 @@
 package org.soprasteria.avans.lockercloud.service;
 
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import org.soprasteria.avans.lockercloud.dto.SyncResult;
 import org.soprasteria.avans.lockercloud.exception.FileStorageException;
 import org.soprasteria.avans.lockercloud.model.FileMetadata;
 import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Recover;
 import org.springframework.retry.annotation.Retryable;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -71,6 +73,7 @@ public class FileManagerService {
         saveFile(file);
     }
 
+    @Recover
     public void recoverSaveFile(IOException e, MultipartFile file) { // Corrected signature
         String fileName = file.getOriginalFilename();
         if (fileName != null) {
@@ -153,6 +156,13 @@ public class FileManagerService {
         }
     }
 
+    public byte[] getFileFallback(String fileName, Throwable t) {
+        System.err.println("CircuitBreaker tripped on getFile: " + t.getMessage());
+        return new byte[0]; // of null, of een specifieke error-indicator
+    }
+
+    @CircuitBreaker(name = "fileService", fallbackMethod = "getFileFallback")
+    @Retryable(value = { IOException.class }, maxAttempts = 3, backoff = @Backoff(delay = 2000))
     public byte[] getFile(String fileName) {
         String normalizedFileName = Paths.get(fileName).getFileName().toString(); // Normalize
         Path filePath = storageLocation.resolve(normalizedFileName);
@@ -182,6 +192,13 @@ public class FileManagerService {
                 throw new FileStorageException("Error reading file chunks for " + normalizedFileName, e);
             }
         }
+    }
+
+    @Recover
+    public byte[] recoverGetFile(IOException e, String fileName) {
+        // cleanup if needed, log, then throw or return an error sentinel
+        deleteFileChunks(fileName);
+        throw new FileStorageException("Failed to download '" + fileName + "' after retries", e);
     }
 
     private int extractChunkIndex(String chunkFileName, String originalFileName) {
