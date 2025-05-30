@@ -52,23 +52,36 @@ public class FileManagerService {
         if (originalFilename == null || originalFilename.trim().isEmpty()) {
             throw new FileStorageException("File name cannot be null or empty.");
         }
-        // Normalize filename to prevent directory traversal issues
         String normalizedFilename = Paths.get(originalFilename).getFileName().toString();
-
-        // Check if file already exists
         Path targetLocation = storageLocation.resolve(normalizedFilename);
-        if (Files.exists(targetLocation)) {
-            throw new FileStorageException("File '" + normalizedFilename + "' already exists on the server.");
-        }
 
-        if (file.getSize() > CHUNK_THRESHOLD) {
-            saveLargeFile(file);
-        } else {
-            try {
-                Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
-            } catch (IOException e) {
-                throw new FileStorageException("Error saving file " + normalizedFilename, e);
+        try {
+            if (file.getSize() > CHUNK_THRESHOLD) {
+                // Grote bestanden: chunking logica
+                saveLargeFile(file);
+                return;
             }
+
+            // Kleine bestanden: checksum-vergelijking
+            String incomingChecksum;
+            try (InputStream in = file.getInputStream()) {
+                incomingChecksum = calculateChecksum(in);
+            }
+
+            String existingChecksum = null;
+            if (Files.exists(targetLocation)) {
+                existingChecksum = calculateChecksum(targetLocation);
+            }
+
+            if (existingChecksum != null && existingChecksum.equalsIgnoreCase(incomingChecksum)) {
+                return; // Identiek, skip upload
+            }
+
+            try (InputStream in = file.getInputStream()) {
+                Files.copy(in, targetLocation, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (IOException e) {
+            throw new FileStorageException("Error saving file " + normalizedFilename, e);
         }
     }
 
@@ -297,6 +310,26 @@ public class FileManagerService {
             byte[] buffer = new byte[1024];
             int bytesRead;
             while ((bytesRead = fis.read(buffer)) != -1) {
+                md.update(buffer, 0, bytesRead);
+            }
+            byte[] digest = md.digest();
+            StringBuilder sb = new StringBuilder();
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IOException("MD5 algorithm not found", e);
+        }
+    }
+
+    // Overload voor InputStream
+    private String calculateChecksum(InputStream inputStream) throws IOException {
+        try {
+            MessageDigest md = MessageDigest.getInstance("MD5");
+            byte[] buffer = new byte[1024];
+            int bytesRead;
+            while ((bytesRead = inputStream.read(buffer)) != -1) {
                 md.update(buffer, 0, bytesRead);
             }
             byte[] digest = md.digest();
