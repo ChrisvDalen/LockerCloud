@@ -45,7 +45,7 @@ public class FileManagerService {
     // Bestaande methoden (saveFile, getFile, deleteFile, listFiles) blijven grotendeels hetzelfde
 
     public void saveFile(MultipartFile file) {
-         if (file.isEmpty()) {
+        if (file.isEmpty()) {
             throw new FileStorageException("Cannot save an empty file.");
         }
         String originalFilename = file.getOriginalFilename();
@@ -55,12 +55,16 @@ public class FileManagerService {
         // Normalize filename to prevent directory traversal issues
         String normalizedFilename = Paths.get(originalFilename).getFileName().toString();
 
+        // Check if file already exists
+        Path targetLocation = storageLocation.resolve(normalizedFilename);
+        if (Files.exists(targetLocation)) {
+            throw new FileStorageException("File '" + normalizedFilename + "' already exists on the server.");
+        }
 
         if (file.getSize() > CHUNK_THRESHOLD) {
             saveLargeFile(file);
         } else {
             try {
-                Path targetLocation = storageLocation.resolve(normalizedFilename);
                 Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
             } catch (IOException e) {
                 throw new FileStorageException("Error saving file " + normalizedFilename, e);
