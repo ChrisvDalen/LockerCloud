@@ -42,7 +42,7 @@ class SecurityConfigIntegrationTest {
         }
 
         @Test
-        @Disabled
+        @Disabled("Faalt voor nu")
         void hoofdpagina_geeft_404_zonder_auth_header() throws Exception {
             mvc.perform(get("/"))
                     .andExpect(status().isNotFound())
@@ -81,7 +81,7 @@ class SecurityConfigIntegrationTest {
         }
 
         @Test
-        @Disabled
+        @Disabled("Faalt voor nu")
         void post_zonder_csrf_token_gepermitAllEndpoint_met_multipart() throws Exception {
             var file = new MockMultipartFile(
                     "file", "test.txt", MediaType.TEXT_PLAIN_VALUE, "dummy".getBytes());

@@ -24,12 +24,17 @@ import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 @Controller
 @RequestMapping("/api/files")
 @Tag(name = "File Operations", description = "Endpoints for file upload, download, deletion, listing and synchronization")
 public class FileController {
 
     private final FileManagerService fileManagerService;
+    private static final Logger logger = LoggerFactory.getLogger(FileController.class);
+
 
     @Autowired
     public FileController(FileManagerService fileManagerService) {
@@ -92,7 +97,7 @@ public class FileController {
                     byte[] data = fileManagerService.getFile(name);
                     if (data == null) {
                         // Log a warning and skip this file
-                        System.err.println("Warning: File " + name + " could not be found or is empty.");
+                        logger.warn("Warning: File {} could not be found or is empty.", name);
                         continue;
                     }
                     ZipEntry entry = new ZipEntry(name);
@@ -164,7 +169,7 @@ public class FileController {
             
             return ResponseEntity.ok(result);
         } catch (Exception e) {
-            System.err.println("Error during server-side local sync: " + e.getMessage());
+            logger.error("Error during server-side local sync: {}", e.getMessage());
 
             List<String> emptyList = Collections.emptyList();
             List<String> errorConflict = Collections.singletonList("Server error during sync: " + e.getMessage());
