@@ -17,7 +17,6 @@ import java.io.*;
 import java.util.*;
 import java.util.zip.*;
 
-import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class FileControllerTest {
