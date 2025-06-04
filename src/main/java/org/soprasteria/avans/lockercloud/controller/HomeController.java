@@ -1,6 +1,7 @@
 package org.soprasteria.avans.lockercloud.controller;
 
 import org.soprasteria.avans.lockercloud.service.FileManagerService;
+import org.soprasteria.avans.lockercloud.model.FileInfo;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,7 +19,10 @@ public class HomeController {
     @GetMapping("/")
     public String home(Model model) {
         // Toon direct de huidige serverbestanden
-        model.addAttribute("files", fileManagerService.listFiles());
+        var infos = fileManagerService.listFileInfos();
+        model.addAttribute("files", infos);
+        long totalSize = infos.stream().mapToLong(f -> f.getSize()).sum();
+        model.addAttribute("totalSize", FileInfo.formatSize(totalSize));
         return "index";
     }
 }

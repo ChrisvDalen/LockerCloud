@@ -4,6 +4,7 @@ import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import org.soprasteria.avans.lockercloud.dto.SyncResult;
 import org.soprasteria.avans.lockercloud.exception.FileStorageException;
 import org.soprasteria.avans.lockercloud.model.FileMetadata;
+import org.soprasteria.avans.lockercloud.model.FileInfo;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Recover;
 import org.springframework.retry.annotation.Retryable;
@@ -18,6 +19,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.*;
+import java.io.UncheckedIOException;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -260,6 +262,44 @@ public class FileManagerService {
             System.err.println("Error listing files from master storage: " + e.getMessage());
             return Collections.emptyList();
         }
+    }
+
+    /**
+     * Returns detailed information for each file in storage for UI purposes.
+     */
+    public List<FileInfo> listFileInfos() {
+        try (Stream<Path> stream = Files.list(storageLocation)) {
+            return stream.filter(Files::isRegularFile)
+                    .filter(p -> !p.getFileName().toString().contains(".part"))
+                    .map(p -> {
+                        try {
+                            long size = Files.size(p);
+                            String type = determineType(p);
+                            return new FileInfo(p.getFileName().toString(), size, type);
+                        } catch (IOException e) {
+                            throw new UncheckedIOException(e);
+                        }
+                    })
+                    .sorted(Comparator.comparing(FileInfo::getName))
+                    .collect(Collectors.toList());
+        } catch (IOException | UncheckedIOException e) {
+            System.err.println("Error listing files with details: " + e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    private String determineType(Path p) {
+        String name = p.getFileName().toString().toLowerCase();
+        if (name.matches(".*\\.(png|jpg|jpeg|gif|bmp|svg)$")) {
+            return "image";
+        }
+        if (name.endsWith(".pdf")) {
+            return "pdf";
+        }
+        if (name.endsWith(".txt") || name.endsWith(".md")) {
+            return "text";
+        }
+        return "binary";
     }
 
     public SyncResult syncFiles(List<FileMetadata> clientProvidedMetadataList) {

@@ -136,10 +136,28 @@ function showDeleteError(msg) {
 // ---------- Stats ----------
 function updateFileCount() {
   const body = document.getElementById('files-body');
-  const count = body ? body.querySelectorAll('tr').length : 0;
+  const rows = body ? Array.from(body.querySelectorAll('tr')).filter(r => r.id !== 'no-files-row') : [];
+  const count = rows.length;
   const counter = document.getElementById('total-files');
   if (counter) counter.textContent = count;
 
+  const totalSizeElem = document.getElementById('total-size');
+  if (totalSizeElem) {
+    const total = rows.reduce((sum, r) => sum + Number(r.dataset.fileSize || 0), 0);
+    totalSizeElem.textContent = formatSize(total);
+  }
+
   const noFilesRow = document.getElementById('no-files-row');
   if (noFilesRow) noFilesRow.classList.toggle('hidden', count > 0);
+}
+
+function formatSize(bytes) {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let size = bytes;
+  let i = 0;
+  while (size >= 1024 && i < units.length - 1) {
+    size /= 1024;
+    i++;
+  }
+  return `${size.toFixed(1)} ${units[i]}`;
 }
