@@ -17,11 +17,38 @@ menuToggle.addEventListener('click', () => {
 // Upload file handling
 const dropZone = document.getElementById('drop-zone');
 const fileInput = document.getElementById('file-input');
-const uploadForm = document.getElementById('upload-form');
+
+function uploadFile(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  fetch('/api/files/upload', {
+    method: 'POST',
+    body: formData
+  }).then(res => {
+    if (res.ok) {
+      window.location.reload();
+    } else {
+      res.text().then(t => alert('Upload mislukt: ' + t));
+    }
+  }).catch(err => alert('Upload mislukt: ' + err));
+}
+
 dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => {
+  e.preventDefault();
+  dropZone.classList.add('bg-gray-100');
+});
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('bg-gray-100'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('bg-gray-100');
+  if (e.dataTransfer.files.length) {
+    uploadFile(e.dataTransfer.files[0]);
+  }
+});
 fileInput.addEventListener('change', () => {
-  if (uploadForm && fileInput.files.length) {
-    uploadForm.submit();
+  if (fileInput.files.length) {
+    uploadFile(fileInput.files[0]);
   }
 });
 
@@ -30,3 +57,40 @@ fileInput.addEventListener('change', () => {
 document.getElementById('sync-btn').addEventListener('click', () => {
   alert('Synchroniseren gestart');
 });
+
+// Delete buttons
+function updateFileCount() {
+  const count = document.querySelectorAll('#files-body tr').length;
+  const counter = document.getElementById('total-files');
+  if (counter) counter.textContent = count;
+  const noFilesRow = document.getElementById('no-files-row');
+  if (noFilesRow) {
+    if (count === 0) {
+      noFilesRow.classList.remove('hidden');
+    } else {
+      noFilesRow.classList.add('hidden');
+    }
+  }
+}
+
+document.querySelectorAll('.delete-link').forEach(link => {
+  link.addEventListener('click', e => {
+    e.preventDefault();
+    const file = link.getAttribute('data-file-name');
+    if (!file) return;
+    if (confirm(`Weet je zeker dat je ${file} wilt verwijderen?`)) {
+      fetch(`/api/files/delete?fileName=${encodeURIComponent(file)}`, { method: 'DELETE' })
+        .then(res => {
+          if (res.ok) {
+            link.closest('tr').remove();
+            updateFileCount();
+          } else {
+            res.text().then(t => alert('Verwijderen mislukt: ' + t));
+          }
+        })
+        .catch(err => alert('Verwijderen mislukt: ' + err));
+    }
+  });
+});
+
+updateFileCount();
