@@ -21,6 +21,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -148,7 +149,9 @@ public class FileController {
     public ResponseEntity<?> syncFiles(@RequestBody List<FileMetadata> clientFiles) {
         try {
             SyncResult result = fileManagerService.syncFiles(clientFiles);
-            if (!result.getConflictFiles().isEmpty()) {
+            List<String> conflicts = Optional.ofNullable(result.getConflictFiles())
+                    .orElse(Collections.emptyList());
+            if (!conflicts.isEmpty()) {
                 return ResponseEntity
                         .status(HttpStatus.CONFLICT)
                         .body(result);
@@ -157,6 +160,10 @@ public class FileController {
         } catch (FileStorageException e) {
             return ResponseEntity
                     .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error syncing files: " + e.getMessage());
+        } catch (Exception e) {
+            return ResponseEntity
+                    .badRequest()
                     .body("Error syncing files: " + e.getMessage());
         }
     }
