@@ -74,8 +74,8 @@ class FileManagerServiceTest {
         byte[] data = "chunk".getBytes();
         MultipartFile raw = new MockMultipartFile("file", "big.bin", "application/octet-stream", data);
         MultipartFile file = spy(raw);
-        // threshold is 100MB
-        long threshold = 100L * 1024 * 1024;
+        // threshold is 4GB
+        long threshold = 4L * 1024 * 1024 * 1024;
         when(file.getSize()).thenReturn(threshold + 1);
 
         service.saveFile(file);

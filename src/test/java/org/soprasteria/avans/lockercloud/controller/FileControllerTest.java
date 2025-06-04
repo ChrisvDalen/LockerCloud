@@ -42,7 +42,7 @@ class FileControllerTest {
         MultipartFile file = new MockMultipartFile("file", "test.txt", "text/plain", "data".getBytes());
         RedirectAttributes attrs = new RedirectAttributesModelMap();
 
-        String view = controller.uploadFile(file, attrs);
+        String view = controller.uploadFile(file, null, null, null, null, attrs);
 
         assertEquals("redirect:/", view);
         assertTrue(attrs.getFlashAttributes().containsKey("uploadSuccess"));
@@ -56,7 +56,7 @@ class FileControllerTest {
         doThrow(new RuntimeException("oops")).when(fileManagerService).saveFileWithRetry(file);
         RedirectAttributes attrs = new RedirectAttributesModelMap();
 
-        String view = controller.uploadFile(file, attrs);
+        String view = controller.uploadFile(file, null, null, null, null, attrs);
 
         assertEquals("redirect:/", view);
         assertTrue(attrs.getFlashAttributes().containsKey("uploadError"));
@@ -67,13 +67,17 @@ class FileControllerTest {
     @Test
     void downloadFile_success() throws Exception {
         byte[] data = {1,2,3};
+        String checksum = md5(data);
         when(fileManagerService.getFile("f.bin")).thenReturn(data);
+        when(fileManagerService.calculateChecksum(data)).thenReturn(checksum);
 
         ResponseEntity<byte[]> resp = controller.downloadFile("f.bin");
 
         assertEquals(HttpStatus.OK, resp.getStatusCode());
         assertEquals("attachment; filename=\"f.bin\"", resp.getHeaders().getFirst(HttpHeaders.CONTENT_DISPOSITION));
+        assertEquals(checksum, resp.getHeaders().getFirst("Checksum"));
         assertEquals(MediaType.APPLICATION_OCTET_STREAM, resp.getHeaders().getContentType());
+        assertEquals(data.length, resp.getHeaders().getContentLength());
         assertArrayEquals(data, resp.getBody());
     }
 
@@ -230,5 +234,14 @@ class FileControllerTest {
 
         assertEquals(HttpStatus.BAD_REQUEST, resp.getStatusCode());
         assertEquals("Error syncing files: sync fail", resp.getBody());
+    }
+
+    private String md5(byte[] data) throws Exception {
+        var md = java.security.MessageDigest.getInstance("MD5");
+        md.update(data);
+        byte[] digest = md.digest();
+        StringBuilder sb = new StringBuilder();
+        for (byte b : digest) sb.append(String.format("%02x", b));
+        return sb.toString();
     }
 }
