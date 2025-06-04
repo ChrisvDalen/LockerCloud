@@ -3,6 +3,8 @@ document.addEventListener('DOMContentLoaded', init);
 function init() {
   initMenuToggle();
   initFileUpload();
+  initBulkUpload();
+  initDownloadAll();
   initSyncButton();
   initDeleteLinks();
   updateFileCount();
@@ -56,13 +58,30 @@ function initFileUpload() {
   dropZone.addEventListener('drop', event => {
     event.preventDefault();
     dropZone.classList.remove('bg-gray-100');
-    const file = event.dataTransfer.files[0];
-    if (file) uploadFile(file);
+    handleFiles(event.dataTransfer.files);
   });
-  fileInput.addEventListener('change', () => {
-    const file = fileInput.files[0];
-    if (file) uploadFile(file);
-  });
+  fileInput.addEventListener('change', () => handleFiles(fileInput.files));
+}
+
+function initBulkUpload() {
+  const bulkBtn = document.getElementById('bulk-upload-btn');
+  const bulkInput = document.getElementById('bulk-input');
+  if (!bulkBtn || !bulkInput) return;
+  bulkBtn.addEventListener('click', () => bulkInput.click());
+  bulkInput.addEventListener('change', () => handleFiles(bulkInput.files));
+}
+
+function initDownloadAll() {
+  const btn = document.getElementById('download-all-btn');
+  if (btn) {
+    btn.addEventListener('click', () => {
+      window.location.href = '/api/files/downloadAll';
+    });
+  }
+}
+
+function handleFiles(fileList) {
+  Array.from(fileList).forEach(uploadFile);
 }
 
 function uploadFile(file) {
