@@ -1,360 +1,163 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
+<html lang="nl" xmlns:th="http://www.thymeleaf.org">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CloudLocker - Bestandsbeheer</title>
-  <!-- Bootstrap 5 CSS -->
-  <link
-          href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
-          rel="stylesheet"
-  />
-  <style>
-      body {
-          padding-top: 70px;
-      }
-      .container {
-          max-width: 960px;
-      }
-      /* Toast container positioning */
-      .position-fixed.toast-container {
-          top: 1rem;
-          right: 1rem;
-          z-index: 1055;
-          position: fixed;
-      }
-      /* Spinner overlay styling */
-      #loadingSpinner {
-          position: fixed;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          background-color: rgba(255, 255, 255, 0.8);
-          display: none;
-          align-items: center;
-          justify-content: center;
-          z-index: 2000;
-      }
-  </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CloudLocker – Bestandsbeheer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-<!-- Navbar -->
-<nav class="navbar navbar-expand-lg navbar-dark bg-primary fixed-top">
-  <div class="container">
-    <a class="navbar-brand" href="/">CloudLocker</a>
-    <button
-            class="navbar-toggler"
-            type="button"
-            data-bs-toggle="collapse"
-            data-bs-target="#navbarContent"
-            aria-controls="navbarContent"
-            aria-expanded="false"
-            aria-label="Toggle navigation"
-    >
-      <span class="navbar-toggler-icon"></span>
+<body class="min-h-screen font-sans bg-gradient-to-b from-[#F5F9FF] to-white">
+  <!-- Navbar -->
+  <nav class="fixed top-0 inset-x-0 h-14 bg-[#1E6EF2] text-white flex items-center px-4 shadow-md z-10">
+    <div class="flex items-center flex-1">
+      <!-- Cloud icon -->
+      <svg class="h-6 w-6 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 004.5 4.5H18a3.75 3.75 0 001.332-7.257 3 3 0 00-3.758-3.848 5.25 5.25 0 00-10.233 2.33A4.502 4.502 0 002.25 15z" />
+      </svg>
+      <span class="font-semibold">CloudLocker</span>
+    </div>
+    <button class="sm:hidden" id="menu-toggle">
+      <!-- Bars icon -->
+      <svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+      </svg>
     </button>
-    <div class="collapse navbar-collapse" id="navbarContent">
-      <ul class="navbar-nav ms-auto">
-        <li class="nav-item">
-          <a class="nav-link active" aria-current="page" href="/">Home</a>
-        </li>
-        <li class="nav-item">
-          <a class="nav-link" href="/showCloudDirectory">Bestanden</a>
-        </li>
-      </ul>
-    </div>
-  </div>
-</nav>
+    <ul id="menu" class="hidden sm:flex space-x-6 items-center">
+      <li>
+        <a th:href="@{/}" class="flex items-center space-x-1">
+        <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
+        </svg>
+        <span>Home</span>
+        </a>
+      </li>
+      <li class="border-b-2 border-white">
+        <a th:href="@{/showCloudDirectory}" class="flex items-center space-x-1">
+        <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
+        </svg>
+        <span>Bestanden</span>
+        </a>
+      </li>
+      <li>
+        <a href="#" class="flex items-center space-x-1">
+        <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+        <span>Instellingen</span>
+        </a>
+      </li>
+      <li class="ml-2">
+        <span class="bg-white text-[#1E6EF2] rounded-full px-2 py-0.5 text-xs font-semibold">80 %</span>
+      </li>
+    </ul>
+  </nav>
 
-<!-- Toast container for flash messages -->
-<div class="toast-container position-fixed p-3">
-  <!-- Toasts will be injected here -->
-</div>
-
-<!-- Loading Spinner Overlay -->
-<div id="loadingSpinner">
-  <div class="spinner-border text-primary" role="status">
-    <span class="visually-hidden">Aan het laden...</span>
-  </div>
-  <span class="ms-2">Alles wordt gedownload...</span>
-</div>
-
-<!-- Main Content -->
-<main class="container mt-5">
-  <h1 class="mb-4">CloudLocker - Bestandsbeheer</h1>
-
-  <!-- Upload Form Card -->
-  <div class="card mb-4">
-    <div class="card-header">Upload een bestand</div>
-    <div class="card-body">
-      <form
-              th:action="@{/api/files/upload}"
-              method="post"
-              enctype="multipart/form-data"
-      >
-        <div class="mb-3">
-          <input class="form-control" type="file" name="file" required />
+  <!-- Main container -->
+  <main class="max-w-6xl mx-auto mt-20 px-4 grid gap-6 lg:grid-cols-[2fr_1fr]">
+    <div class="space-y-6">
+      <!-- Upload Card -->
+      <div class="bg-white rounded-xl shadow-md p-6 flex flex-col items-center justify-center">
+        <form id="upload-form" th:action="@{/api/files/upload}" method="post" enctype="multipart/form-data" class="w-full">
+        <div id="drop-zone" class="border-2 border-dashed border-gray-300 rounded-lg h-48 w-full flex flex-col items-center justify-center cursor-pointer">
+          <svg class="h-12 w-12 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
+          </svg>
+          <p class="mt-2 text-gray-500 text-sm text-center">Sleep bestanden hierheen of klik om te selecteren</p>
+          <input type="file" name="file" class="hidden" id="file-input" />
         </div>
-        <button type="submit" class="btn btn-primary">Upload</button>
-      </form>
-    </div>
-  </div>
+        </form>
+      </div>
 
-  <!-- Synchronisatie Resultaat Card -->
-  <div id="syncResult" class="card mb-4" style="display: none;">
-    <div class="card-header">Synchronisatie resultaat</div>
-    <div class="card-body">
-      <p>Te uploaden: <span id="uploadCount">0</span></p>
-      <p>Te downloaden: <span id="downloadCount">0</span></p>
-      <p>Conflicten: <span id="conflictCount">0</span></p>
-    </div>
-  </div>
-
-  <!-- Bestandenlijst Card -->
-  <div class="card mb-4">
-    <div class="card-header">Bestanden op de server</div>
-    <div class="card-body">
-      <table class="table table-striped">
-        <thead>
-          <tr>
-            <th>Bestandsnaam</th>
-            <th>Acties</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr th:each="file : ${files}">
-            <td th:text="${file}">Bestandsnaam</td>
-            <td>
-              <a
-                      th:href="@{/api/files/download(fileName=${file})}"
-                      class="btn btn-sm btn-success"
-              >Download</a
-              >
-              <a
-                      th:href="@{/api/files/delete(fileName=${file})}"
-                      class="btn btn-sm btn-danger"
-                      onclick="return confirm('Weet je zeker dat je dit bestand wilt verwijderen?');"
-              >Verwijderen</a
-              >
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      <div th:if="${#lists.isEmpty(files)}" class="alert alert-info">
-        Er zijn geen bestanden gevonden.
+      <!-- Files Table -->
+      <div class="bg-white rounded-xl shadow-md p-6 overflow-auto">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="font-semibold">Bestanden op de server</h2>
+          <div class="space-x-2">
+            <button class="bg-[#1E6EF2] text-white px-3 py-1 rounded-md text-sm" id="sync-btn">Synchroniseren</button>
+            <button class="border border-[#1E6EF2] text-[#1E6EF2] px-3 py-1 rounded-md text-sm">Download alles</button>
+          </div>
+        </div>
+        <table class="w-full text-sm" id="files-table">
+          <thead>
+            <tr class="text-left text-gray-500">
+              <th class="py-2">Bestandsnaam</th>
+              <th class="py-2">Acties</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr th:each="file : ${files}" class="border-t">
+              <td class="py-2 pr-2" th:text="${file}"></td>
+              <td class="py-2 flex space-x-2">
+                <a th:href="@{/api/files/download(fileName=${file})}" class="text-green-500 hover:opacity-80" title="Download">
+                  <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                  </svg>
+                </a>
+                <a th:href="@{/api/files/delete(fileName=${file})}" class="text-red-500 hover:opacity-80" title="Verwijderen" onclick="return confirm('Weet je zeker dat je dit bestand wilt verwijderen?');">
+                  <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                  </svg>
+                </a>
+              </td>
+            </tr>
+            <tr th:if="${#lists.isEmpty(files)}">
+              <td colspan="2" class="py-2 text-center text-gray-500">Er zijn geen bestanden gevonden.</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
-  </div>
-  <div class="d-flex justify-content-end mb-4">
-    <button id="syncBtn" class="btn btn-primary me-2">
-      Synchroniseer
-    </button>
-    <button id="downloadAllBtn" data-href="/api/files/downloadAll"
-            class="btn btn-success me-2">
-      Download alles
-    </button>
-    <a href="/" class="btn btn-secondary">Herlaad pagina</a>
-  </div>
-</main>
 
-<!-- Bootstrap 5 JS Bundle -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <div class="space-y-6">
+      <!-- Stats Card -->
+      <div class="bg-white rounded-xl shadow-md p-6">
+        <h2 class="font-semibold mb-4">Statistieken</h2>
+        <ul class="space-y-2 text-sm">
+          <li class="flex justify-between">
+            <span>Totaal bestanden:</span>
+            <span class="bg-gray-100 rounded-full px-2" id="total-files">8</span>
+          </li>
+          <li class="flex justify-between">
+            <span>Totale grootte:</span>
+            <span class="bg-gray-100 rounded-full px-2" id="total-size">1.2 GB</span>
+          </li>
+          <li class="flex justify-between items-center">
+            <span>Status:</span>
+            <span class="bg-green-500 text-white rounded-full px-2 text-xs">Gesynchroniseerd</span>
+          </li>
+        </ul>
+      </div>
 
-<!-- Inline Thymeleaf + Toast JS -->
-<script th:inline="javascript">
-    /*<![CDATA[*/
-    const successMsg = /*[[${uploadSuccess}]]*/ '';
-    const errorMsg = /*[[${uploadError}]]*/ '';
+      <!-- Quick Actions -->
+      <div class="bg-white rounded-xl shadow-md p-6">
+        <h2 class="font-semibold mb-4">Snelle acties</h2>
+        <div class="space-y-2">
+          <button class="w-full flex items-center justify-center border border-gray-300 rounded-md py-2 hover:bg-gray-50">
+            <svg class="h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+            </svg>
+            Download alle bestanden
+          </button>
+          <button class="w-full flex items-center justify-center border border-gray-300 rounded-md py-2 hover:bg-gray-50">
+            <svg class="h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
+            </svg>
+            Bulk upload
+          </button>
+          <button class="w-full flex items-center justify-center border border-gray-300 rounded-md py-2 hover:bg-gray-50">
+            <svg class="h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            Synchronisatie instellingen
+          </button>
+        </div>
+      </div>
+    </div>
+  </main>
 
-    function showToast(message, isSuccess = true, delayMs = 4000) {
-        const container = document.querySelector('.toast-container');
-        const toastEl = document.createElement('div');
-        toastEl.className =
-            'toast align-items-center text-bg-' +
-            (isSuccess ? 'success' : 'danger') +
-            ' border-0';
-        toastEl.setAttribute('role', 'alert');
-        toastEl.setAttribute('aria-live', 'assertive');
-        toastEl.setAttribute('aria-atomic', 'true');
-        toastEl.setAttribute('data-bs-delay', delayMs);
-        toastEl.innerHTML = `
-        <div class="d-flex">
-          <div class="toast-body">${message}</div>
-          <button type="button" class="btn-close btn-close-white me-2 m-auto"
-                  data-bs-dismiss="toast" aria-label="Close"></button>
-        </div>`;
-        container.appendChild(toastEl);
-        new bootstrap.Toast(toastEl).show();
-    }
-
-    document.addEventListener('DOMContentLoaded', () => {
-        if (successMsg) showToast(successMsg, true);
-        else if (errorMsg) showToast(errorMsg, false);
-    });
-
-    // Download-all button
-    document.addEventListener('DOMContentLoaded', function() {
-        const downloadBtn = document.getElementById('downloadAllBtn');
-        const spinner = document.getElementById('loadingSpinner');
-        downloadBtn?.addEventListener('click', e => {
-            e.preventDefault();
-            const url = downloadBtn.getAttribute('data-href');
-            spinner.style.display = 'flex';
-            fetch(url)
-                .then(res => {
-                    if (!res.ok) throw new Error('Download failed');
-                    return res.blob();
-                })
-                .then(blob => {
-                    const u = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = u; a.download = 'cloudlocker-bestanden.zip';
-                    document.body.appendChild(a);
-                    a.click(); a.remove(); URL.revokeObjectURL(u);
-                })
-                .catch(err => {
-                    console.error(err);
-                    showToast('Download alles mislukt', false);
-                })
-                .finally(() => spinner.style.display = 'none');
-        });
-    });
-    /*]]>*/
-</script>
-
-<!-- Synchroniseer logic -->
-<script>
-    // Helper to track downloaded files in localStorage
-    function getDownloadedSet() {
-        const stored = localStorage.getItem('downloadedFiles');
-        return stored ? new Set(JSON.parse(stored)) : new Set();
-    }
-    function saveDownloadedSet(set) {
-        localStorage.setItem('downloadedFiles', JSON.stringify([...set]));
-    }
-
-    const syncBtn = document.getElementById('syncBtn');
-    const spinner = document.getElementById('loadingSpinner');
-    const syncResultCard = document.getElementById('syncResult');
-    const uploadCountSpan = document.getElementById('uploadCount');
-    const downloadCountSpan = document.getElementById('downloadCount');
-    const conflictCountSpan = document.getElementById('conflictCount');
-
-    syncBtn.addEventListener('click', () => {
-        spinner.style.display = 'flex';
-        const msgEl = spinner.querySelector('span.ms-2');
-        if(msgEl) msgEl.textContent = 'Bezig met synchroniseren...';
-
-        // Reset UI
-        syncResultCard.style.display  = 'none';
-        uploadCountSpan.textContent   = '0';
-        downloadCountSpan.textContent = '0';
-        conflictCountSpan.textContent = '0';
-
-        const downloaded = getDownloadedSet();
-
-        fetch('/api/files/syncLocal')
-            .then(async resp => {
-                if (!resp.ok) throw new Error(`Serverfout: ${resp.status}`);
-                return resp.json();
-            })
-            .then(result => {
-                const toUpload   = result.filesToUpload || [];
-                const toDownload = (result.filesToDownload || []).filter(name => !downloaded.has(name));
-                const conflicts  = result.conflictFiles || [];
-
-                // Populate counts
-                uploadCountSpan.textContent   = toUpload.length;
-                downloadCountSpan.textContent = toDownload.length;
-                conflictCountSpan.textContent = conflicts.length;
-                syncResultCard.style.display  = 'block';
-
-                // Show toast
-                if (conflicts.length) {
-                    showToast(`Conflicten: ${conflicts.join(', ')}`, false, 8000);
-                } else if (toUpload.length || toDownload.length) {
-                    showToast('Synchronisatie voltooid.', true);
-                } else {
-                    showToast('Alles is al gesynchroniseerd.', true);
-                }
-
-                // Download new files sequentially
-                let rem = toDownload.length;
-                function downloadOne(name) {
-                    return fetch(`/api/files/download?fileName=${encodeURIComponent(name)}`)
-                        .then(res => {
-                            if (!res.ok) throw new Error(`Download mislukt: ${name}`);
-                            return res.blob();
-                        })
-                        .then(blob => {
-                            const u = URL.createObjectURL(blob);
-                            const a = document.createElement('a');
-                            a.href = u; a.download = name;
-                            document.body.appendChild(a);
-                            a.click(); a.remove(); URL.revokeObjectURL(u);
-                            // mark downloaded
-                            downloaded.add(name);
-                            saveDownloadedSet(downloaded);
-                            rem--;
-                            downloadCountSpan.textContent = rem;
-                        });
-                }
-
-                // Chain downloads
-                toDownload.reduce((p, name) => p.then(() => downloadOne(name)), Promise.resolve())
-                    .catch(err => showToast(err.message, false));
-            })
-            .catch(err => {
-                console.error(err);
-                showToast(err.message, false);
-            })
-            .finally(() => {
-                spinner.style.display = 'none';
-                if(msgEl) msgEl.textContent = 'Alles wordt gedownload...';
-            });
-    });
-</script>
-
-<script>
-    document.addEventListener('DOMContentLoaded', function() {
-        // Get the upload form and spinner elements
-        const uploadForm = document.querySelector('form[enctype="multipart/form-data"]');
-        const spinner = document.getElementById('loadingSpinner');
-
-        if (uploadForm && spinner) {
-            uploadForm.addEventListener('submit', function() {
-                // Show the spinner
-                spinner.style.display = 'flex';
-
-                // Change loading text to indicate upload in progress
-                const msgEl = spinner.querySelector('span.ms-2');
-                if (msgEl) msgEl.textContent = 'Bezig met uploaden...';
-            });
-        }
-    });
-
-    document.addEventListener('DOMContentLoaded', function() {
-        // Get the spinner element
-        const spinner = document.getElementById('loadingSpinner');
-
-        // Add event listeners to all individual download buttons
-        document.querySelectorAll('a[href^="/api/files/download"]').forEach(function(downloadLink) {
-            downloadLink.addEventListener('click', function() {
-                // Show the spinner
-                spinner.style.display = 'flex';
-
-                // Change loading text to indicate download in progress
-                const msgEl = spinner.querySelector('span.ms-2');
-                if (msgEl) msgEl.textContent = 'Bezig met downloaden...';
-
-                // Hide spinner after a short delay (when download likely started)
-                setTimeout(function() {
-                    spinner.style.display = 'none';
-                }, 1500);
-            });
-        });
-    });
-</script>
+  <script th:src="@{/app.js}"></script>
 </body>
 </html>
