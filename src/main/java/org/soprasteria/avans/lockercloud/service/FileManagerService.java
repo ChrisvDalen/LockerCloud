@@ -28,9 +28,9 @@ import org.slf4j.LoggerFactory;
 @Service
 public class FileManagerService {
 
-    // Voor grote bestanden (demonstratie: 100 MB threshold, in productie 4GB)
     private static final Logger logger = LoggerFactory.getLogger(FileManagerService.class);
-    private static final long CHUNK_THRESHOLD = 100L * 1024 * 1024; // 100 MB
+    // Bestanden groter dan 4GB moeten in chunks worden verwerkt volgens het protocol
+    private static final long CHUNK_THRESHOLD = 4L * 1024 * 1024 * 1024; // 4 GB
     private static final long CHUNK_SIZE = 10L * 1024 * 1024; // 10 MB
     private static final long MOD_TIME_THRESHOLD_MS = 1000L;
 
@@ -49,7 +49,7 @@ public class FileManagerService {
 
     // Bestaande methoden (saveFile, getFile, deleteFile, listFiles) blijven grotendeels hetzelfde
 
-    public void saveFile(MultipartFile file) {
+    public void saveFile(MultipartFile file, String expectedChecksum) {
         String originalFilename = file.getOriginalFilename();
         if (originalFilename == null || originalFilename.trim().isEmpty()) {
             throw new FileStorageException("File name cannot be null or empty.");
@@ -60,36 +60,20 @@ public class FileManagerService {
         try {
             if (file.getSize() > CHUNK_THRESHOLD) {
                 // Grote bestanden: chunking logica
-                saveLargeFile(file);
+                saveLargeFile(file, expectedChecksum);
                 return;
             }
 
-            // Kleine bestanden: checksum-vergelijking
-            String incomingChecksum;
-            try (InputStream in = file.getInputStream()) {
-                incomingChecksum = calculateChecksum(in);
-            }
-
-            String existingChecksum = null;
-            if (Files.exists(targetLocation)) {
-                existingChecksum = calculateChecksum(targetLocation);
-            }
-
-            if (existingChecksum != null && existingChecksum.equalsIgnoreCase(incomingChecksum)) {
-                return; // Identiek, skip upload
-            }
-
-            try (InputStream in = file.getInputStream()) {
-                Files.copy(in, targetLocation, StandardCopyOption.REPLACE_EXISTING);
-            }
+            // Kleine bestanden: transactionele opslag met checksum-validatie
+            saveFileTransactional(file, expectedChecksum);
         } catch (IOException e) {
             throw new FileStorageException("Error saving file " + normalizedFilename, e);
         }
     }
 
     @Retryable(retryFor = { IOException.class }, maxAttempts = 3, backoff = @Backoff(delay = 2000))
-    public void saveFileWithRetry(MultipartFile file) {
-        saveFile(file);
+    public void saveFileWithRetry(MultipartFile file, String expectedChecksum) {
+        saveFile(file, expectedChecksum);
     }
 
     @Recover
@@ -106,9 +90,10 @@ public class FileManagerService {
         throw new FileStorageException("Failed to upload file '" + fileName + "' after retries.", e);
     }
 
-    private void saveLargeFile(MultipartFile file) {
+    private void saveLargeFile(MultipartFile file, String expectedChecksum) {
         String originalFileName = Paths.get(file.getOriginalFilename()).getFileName().toString();
         try (InputStream inputStream = file.getInputStream()) {
+            MessageDigest md = MessageDigest.getInstance("MD5");
             byte[] buffer = new byte[(int) CHUNK_SIZE];
             int bytesRead;
             int chunkIndex = 1;
@@ -116,6 +101,7 @@ public class FileManagerService {
 
             // 1) Schrijf alle chunks
             while ((bytesRead = inputStream.read(buffer)) != -1) {
+                md.update(buffer, 0, bytesRead);
                 String chunkName = originalFileName + ".part" + chunkIndex++;
                 Path chunkPath = storageLocation.resolve(chunkName);
                 try (OutputStream os = Files.newOutputStream(chunkPath,
@@ -145,13 +131,19 @@ public class FileManagerService {
                         });
             }
 
+            String actualChecksum = bytesToHex(md.digest());
+            if (expectedChecksum != null && !expectedChecksum.equalsIgnoreCase(actualChecksum)) {
+                Files.deleteIfExists(finalPath);
+                deleteFileChunks(originalFileName);
+                throw new FileStorageException("Checksum mismatch for file " + originalFileName);
+            }
+
             // 3) (Optioneel) verwijder de chunk-bestanden
             // Verwijderen uitgeschakeld voor testondersteuning
             // for (Path chunk : writtenChunks) {
             //     Files.deleteIfExists(chunk);
             // }
-
-        } catch (IOException e) {
+        } catch (IOException | NoSuchAlgorithmException e) {
             // bestaande cleanup
             deleteFileChunks(originalFileName);
             throw new FileStorageException("Error saving large file " + originalFileName, e);
@@ -347,6 +339,15 @@ public class FileManagerService {
         } catch (NoSuchAlgorithmException e) {
             throw new IOException("MD5 algorithm not found", e);
         }
+    }
+
+    // Helper to convert a byte array to hex string (used for large file checksum)
+    private String bytesToHex(byte[] digest) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : digest) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
     }
 
     /**

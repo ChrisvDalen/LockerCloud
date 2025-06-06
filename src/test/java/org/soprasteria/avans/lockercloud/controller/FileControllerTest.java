@@ -47,13 +47,13 @@ class FileControllerTest {
         assertEquals("redirect:/", view);
         assertTrue(attrs.getFlashAttributes().containsKey("uploadSuccess"));
         assertEquals("Bestand test.txt succesvol geüpload!", attrs.getFlashAttributes().get("uploadSuccess"));
-        verify(fileManagerService).saveFileWithRetry(file);
+        verify(fileManagerService).saveFileWithRetry(eq(file), any());
     }
 
     @Test
     void uploadFile_error()  {
         MultipartFile file = new MockMultipartFile("file", "bad.txt", "text/plain", "data".getBytes());
-        doThrow(new RuntimeException("oops")).when(fileManagerService).saveFileWithRetry(file);
+        doThrow(new RuntimeException("oops")).when(fileManagerService).saveFileWithRetry(eq(file), any());
         RedirectAttributes attrs = new RedirectAttributesModelMap();
 
         String view = controller.uploadFile(file, attrs);
@@ -61,7 +61,7 @@ class FileControllerTest {
         assertEquals("redirect:/", view);
         assertTrue(attrs.getFlashAttributes().containsKey("uploadError"));
         assertEquals("Fout bij uploaden: oops", attrs.getFlashAttributes().get("uploadError"));
-        verify(fileManagerService).saveFileWithRetry(file);
+        verify(fileManagerService).saveFileWithRetry(eq(file), any());
     }
 
     @Test
@@ -74,6 +74,7 @@ class FileControllerTest {
         assertEquals(HttpStatus.OK, resp.getStatusCode());
         assertEquals("attachment; filename=\"f.bin\"", resp.getHeaders().getFirst(HttpHeaders.CONTENT_DISPOSITION));
         assertEquals(MediaType.APPLICATION_OCTET_STREAM, resp.getHeaders().getContentType());
+        assertNotNull(resp.getHeaders().getFirst("Checksum"));
         assertArrayEquals(data, resp.getBody());
     }
 

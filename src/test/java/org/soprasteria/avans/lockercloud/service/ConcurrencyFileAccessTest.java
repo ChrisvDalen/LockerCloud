@@ -10,6 +10,7 @@ import org.soprasteria.avans.lockercloud.exception.FileStorageException;
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
+import java.security.MessageDigest;
 import java.util.concurrent.*;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -54,7 +55,7 @@ class ConcurrencyFileManagerServiceTest {
                     "file", fileName, "text/plain", payload.getBytes(StandardCharsets.UTF_8)));
             when(file.getSize()).thenReturn((long) payload.getBytes().length);
             try {
-                service.saveFile(file);
+                service.saveFile(file, md5(payload.getBytes(StandardCharsets.UTF_8)));
             } catch (FileStorageException ignore) {
                 // allow race-related failures
             }
@@ -82,5 +83,14 @@ class ConcurrencyFileManagerServiceTest {
         // Should match thread-naming pattern and not be corrupted
         assertTrue(content.matches("pool-\\d+-thread-\\d+"),
                 "Final file content should match a thread name pattern, was: " + content);
+    }
+
+    private String md5(byte[] data) throws Exception {
+        var md = MessageDigest.getInstance("MD5");
+        md.update(data);
+        byte[] digest = md.digest();
+        StringBuilder sb = new StringBuilder();
+        for (byte b : digest) sb.append(String.format("%02x", b));
+        return sb.toString();
     }
 }
