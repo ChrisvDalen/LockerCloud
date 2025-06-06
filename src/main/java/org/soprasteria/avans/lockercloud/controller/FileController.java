@@ -21,8 +21,12 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Controller
 @RequestMapping("/api/files")
@@ -30,6 +34,8 @@ import java.util.zip.ZipOutputStream;
 public class FileController {
 
     private final FileManagerService fileManagerService;
+    private static final Logger logger = LoggerFactory.getLogger(FileController.class);
+
 
     @Autowired
     public FileController(FileManagerService fileManagerService) {
@@ -92,7 +98,7 @@ public class FileController {
                     byte[] data = fileManagerService.getFile(name);
                     if (data == null) {
                         // Log a warning and skip this file
-                        System.err.println("Warning: File " + name + " could not be found or is empty.");
+                        logger.warn("Warning: File {} could not be found or is empty.", name);
                         continue;
                     }
                     ZipEntry entry = new ZipEntry(name);
@@ -143,7 +149,9 @@ public class FileController {
     public ResponseEntity<?> syncFiles(@RequestBody List<FileMetadata> clientFiles) {
         try {
             SyncResult result = fileManagerService.syncFiles(clientFiles);
-            if (!result.getConflictFiles().isEmpty()) {
+            List<String> conflicts = Optional.ofNullable(result.getConflictFiles())
+                    .orElse(Collections.emptyList());
+            if (!conflicts.isEmpty()) {
                 return ResponseEntity
                         .status(HttpStatus.CONFLICT)
                         .body(result);
@@ -152,6 +160,10 @@ public class FileController {
         } catch (FileStorageException e) {
             return ResponseEntity
                     .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error syncing files: " + e.getMessage());
+        } catch (Exception e) {
+            return ResponseEntity
+                    .badRequest()
                     .body("Error syncing files: " + e.getMessage());
         }
     }
@@ -164,7 +176,7 @@ public class FileController {
             
             return ResponseEntity.ok(result);
         } catch (Exception e) {
-            System.err.println("Error during server-side local sync: " + e.getMessage());
+            logger.error("Error during server-side local sync: {}", e.getMessage());
 
             List<String> emptyList = Collections.emptyList();
             List<String> errorConflict = Collections.singletonList("Server error during sync: " + e.getMessage());

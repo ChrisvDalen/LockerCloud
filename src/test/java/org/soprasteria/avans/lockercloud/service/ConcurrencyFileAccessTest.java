@@ -62,6 +62,7 @@ class ConcurrencyFileManagerServiceTest {
                 byte[] data = service.getFile(fileName);
                 assertNotNull(data, "Reader must get non-null data");
             } catch (FileStorageException ignore) {
+                //filler code
             }
             return null;
         };
