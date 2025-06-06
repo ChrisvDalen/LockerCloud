@@ -45,3 +45,5 @@ LIST\n
 ```
 
 Responses are plain text or raw bytes. The server uses the same `keystore.p12` for TLS encryption.
+
+YourPasswordHere = password;
