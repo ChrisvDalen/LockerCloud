@@ -54,19 +54,36 @@ public class FileManagerService {
         if (originalFilename == null || originalFilename.trim().isEmpty()) {
             throw new FileStorageException("File name cannot be null or empty.");
         }
-        // Normalize filename to prevent directory traversal issues
         String normalizedFilename = Paths.get(originalFilename).getFileName().toString();
+        Path targetLocation = storageLocation.resolve(normalizedFilename);
 
-
-        if (file.getSize() > CHUNK_THRESHOLD) {
-            saveLargeFile(file);
-        } else {
-            try {
-                Path targetLocation = storageLocation.resolve(normalizedFilename);
-                Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
-            } catch (IOException e) {
-                throw new FileStorageException("Error saving file " + normalizedFilename, e);
+        try {
+            if (file.getSize() > CHUNK_THRESHOLD) {
+                // Grote bestanden: chunking logica
+                saveLargeFile(file);
+                return;
             }
+
+            // Kleine bestanden: checksum-vergelijking
+            String incomingChecksum;
+            try (InputStream in = file.getInputStream()) {
+                incomingChecksum = calculateChecksum(in);
+            }
+
+            String existingChecksum = null;
+            if (Files.exists(targetLocation)) {
+                existingChecksum = calculateChecksum(targetLocation);
+            }
+
+            if (existingChecksum != null && existingChecksum.equalsIgnoreCase(incomingChecksum)) {
+                return; // Identiek, skip upload
+            }
+
+            try (InputStream in = file.getInputStream()) {
+                Files.copy(in, targetLocation, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (IOException e) {
+            throw new FileStorageException("Error saving file " + normalizedFilename, e);
         }
     }
 
@@ -83,7 +100,7 @@ public class FileManagerService {
             try {
                 Files.deleteIfExists(storageLocation.resolve(fileName));
             } catch (IOException ex) {
-                logger.error("Failed to delete main file during recovery: {} " + fileName);
+                logger.error("Failed to delete main file during recovery: {}", fileName);
             }
         }
         throw new FileStorageException("Failed to upload file '" + fileName + "' after retries.", e);
@@ -151,7 +168,7 @@ public class FileManagerService {
                         try {
                             Files.deleteIfExists(path);
                         } catch (IOException ex) {
-                            logger.error("Failed to delete chunk {}: {}", path.getFileName().toString(), ex.getMessage());
+                            logger.error("Failed to delete chunk {}: {}", path.getFileName(), ex.getMessage());
                         }
                     });
         } catch (IOException e) {
@@ -160,7 +177,7 @@ public class FileManagerService {
     }
 
     public byte[] getFileFallback(String fileName, Throwable t) {
-        logger.error("CircuitBreaker tripped on getFile: {} " + t.getMessage());
+        logger.error("CircuitBreaker tripped on getFile: {}", t.getMessage());
         return new byte[0]; // of null, of een specifieke error-indicator
     }
 
@@ -241,9 +258,9 @@ public class FileManagerService {
                     .map(path -> path.getFileName().toString())
                     .filter(name -> !name.contains(".part")) // Exclude chunk files from list
                     .sorted() // Sort for consistent order
-                    .collect(Collectors.toList());
+                    .toList()
         } catch (IOException e) {
-            logger.error("Error listing files from master storage: {} " + e.getMessage());
+            logger.error("Error listing files from master storage: {}", e.getMessage());
             return Collections.emptyList();
         }
     }
@@ -312,6 +329,26 @@ public class FileManagerService {
         }
     }
 
+    // Overload voor InputStream
+    private String calculateChecksum(InputStream inputStream) throws IOException {
+        try {
+            MessageDigest md = MessageDigest.getInstance("MD5");
+            byte[] buffer = new byte[1024];
+            int bytesRead;
+            while ((bytesRead = inputStream.read(buffer)) != -1) {
+                md.update(buffer, 0, bytesRead);
+            }
+            byte[] digest = md.digest();
+            StringBuilder sb = new StringBuilder();
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IOException("MD5 algorithm not found", e);
+        }
+    }
+
     /**
      * Automatische synchronisatie: Lees de "clientSync" map (simuleert de lokale client-bestanden),
      * bereken metadata voor elk bestand en roep de bestaande syncFiles-methode aan.
@@ -330,7 +367,7 @@ public class FileManagerService {
                             meta.setUploadDate(LocalDateTime.now());
                             clientFiles.add(meta);
                         } catch (IOException e) {
-                            logger.error("Error reading client file " + path.getFileName().toString());
+                            logger.error("Error reading client file {}", path.getFileName());
                         }
                     });
         } catch (IOException e) {
@@ -390,7 +427,7 @@ public class FileManagerService {
                     FileMetadata meta = new FileMetadata(fileName, checksum, fileSize, fileTime, lastMod);
                     clientLocalFilesMetadata.add(meta);
                 } catch (IOException e) {
-                    logger.error("Error generating metadata for client file '{}': {}", path.getFileName().toString(), e.getMessage());
+                    logger.error("Error generating metadata for client file '{}': {}", path.getFileName(), e.getMessage());
                 }
             });
         } catch (IOException e) {

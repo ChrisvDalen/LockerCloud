@@ -98,6 +98,8 @@ class FileControllerTest {
         assertEquals("attachment; filename=\"all-files.zip\"", resp.getHeaders().getFirst(HttpHeaders.CONTENT_DISPOSITION));
         try (ZipInputStream zis = new ZipInputStream(new ByteArrayInputStream(resp.getBody()))) {
             assertNull(zis.getNextEntry());
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
     }
 
