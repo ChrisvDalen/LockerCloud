@@ -90,6 +90,23 @@ public class FileManagerService {
         saveFile(file);
     }
 
+    /**
+     * Save raw data from an InputStream. This simplified method is used by the
+     * SSL socket server where uploads are handled without a Multipart request.
+     */
+    public void saveStream(String fileName, InputStream stream) {
+        if (fileName == null || fileName.trim().isEmpty()) {
+            throw new FileStorageException("File name cannot be null or empty.");
+        }
+        String normalized = Paths.get(fileName).getFileName().toString();
+        Path target = storageLocation.resolve(normalized);
+        try {
+            Files.copy(stream, target, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            throw new FileStorageException("Error saving file " + normalized, e);
+        }
+    }
+
     @Recover
     public void recoverSaveFile(IOException e, MultipartFile file) { // Corrected signature
         String fileName = file.getOriginalFilename();
