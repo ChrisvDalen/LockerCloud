@@ -80,7 +80,7 @@ class SecurityConfigIntegrationTest {
 
         @Test
         void apiFiles_mag_niet_authenticeren() throws Exception {
-            mvc.perform(get("/api/files/list"))
+            mvc.perform(post("/listFiles"))
                     .andExpect(status().isOk())
                     .andExpect(header().doesNotExist("WWW-Authenticate"));
         }
@@ -89,7 +89,7 @@ class SecurityConfigIntegrationTest {
         void post_zonder_csrf_token_gepermitAllEndpoint_met_multipart() throws Exception {
             var file = new MockMultipartFile(
                     "file", "test.txt", MediaType.TEXT_PLAIN_VALUE, "dummy".getBytes());
-            mvc.perform(multipart("/api/files/upload").file(file))
+            mvc.perform(multipart("/uploadForm").file(file))
                     .andExpect(status().is3xxRedirection())
                     .andExpect(header().doesNotExist("WWW-Authenticate"));
         }
