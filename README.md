@@ -14,12 +14,26 @@ server is accessed via HTTPS.
 
 ### Generating a certificate
 
-The repository does not include a keystore. Generate one with `keytool`:
+The repository does not include a keystore. Generate one with `keytool`, then
+place the resulting `keystore.p12` in `src/main/resources` **before** packaging
+the application:
 
 ```bash
 keytool -genkeypair -alias lockercloud -keyalg RSA -keysize 2048 \
   -storetype PKCS12 -keystore keystore.p12 -validity 3650 \
   -storepass <password> -dname "CN=LockerCloud"
+```
+After creating the keystore, build the project again so the file gets packaged
+into the jar:
+
+```bash
+mvn clean package
+```
+Then start the container (Docker or Podman will work) with a rebuild so the
+new jar is used:
+
+```bash
+podman compose up --build
 ```
 ## SSL Socket Server
 
