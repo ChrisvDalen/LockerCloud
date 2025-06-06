@@ -10,3 +10,4 @@ services:
       - SPRING_PROFILES_ACTIVE=prod
     volumes:
       - ./filestorage:/app/filestorage
+      - ./keystore.p12:/app/keystore.p12:ro

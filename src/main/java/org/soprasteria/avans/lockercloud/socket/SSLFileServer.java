@@ -1,7 +1,6 @@
 package org.soprasteria.avans.lockercloud.socket;
 
 import org.soprasteria.avans.lockercloud.service.FileManagerService;
-import org.springframework.core.io.ClassPathResource;
 
 import javax.net.ssl.*;
 import java.io.*;
@@ -17,10 +16,15 @@ public class SSLFileServer implements Runnable {
 
     private final int port;
     private final FileManagerService fileService;
+    private final String keyStorePath;
+    private final String keyStorePassword;
 
-    public SSLFileServer(int port, FileManagerService fileService) {
+    public SSLFileServer(int port, FileManagerService fileService,
+                         String keyStorePath, String keyStorePassword) {
         this.port = port;
         this.fileService = fileService;
+        this.keyStorePath = keyStorePath;
+        this.keyStorePassword = keyStorePassword;
     }
 
     @Override
@@ -40,9 +44,9 @@ public class SSLFileServer implements Runnable {
     }
 
     private SSLContext createContext() throws Exception {
-        char[] pass = "password".toCharArray();
+        char[] pass = keyStorePassword.toCharArray();
         KeyStore ks = KeyStore.getInstance("PKCS12");
-        try (InputStream is = new ClassPathResource("keystore.p12").getInputStream()) {
+        try (InputStream is = new FileInputStream(keyStorePath)) {
             ks.load(is, pass);
         }
         KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());

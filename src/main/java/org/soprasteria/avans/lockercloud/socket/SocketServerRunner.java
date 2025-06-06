@@ -15,6 +15,12 @@ public class SocketServerRunner implements CommandLineRunner {
     @Value("${socket.port:9000}")
     private int port;
 
+    @Value("${server.ssl.key-store}")
+    private String keyStorePath;
+
+    @Value("${server.ssl.key-store-password}")
+    private String keyStorePassword;
+
     private final FileManagerService fileManagerService;
 
     @Autowired
@@ -24,7 +30,14 @@ public class SocketServerRunner implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        SSLFileServer server = new SSLFileServer(port, fileManagerService);
+        String path = keyStorePath;
+        if (path.startsWith("classpath:")) {
+            path = path.substring("classpath:".length());
+        } else if (path.startsWith("file:")) {
+            path = path.substring("file:".length());
+        }
+        SSLFileServer server = new SSLFileServer(port, fileManagerService,
+                path, keyStorePassword);
         Thread t = new Thread(server);
         t.setDaemon(true);
         t.start();
