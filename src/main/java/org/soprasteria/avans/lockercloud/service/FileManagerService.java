@@ -50,9 +50,6 @@ public class FileManagerService {
     // Bestaande methoden (saveFile, getFile, deleteFile, listFiles) blijven grotendeels hetzelfde
 
     public void saveFile(MultipartFile file) {
-         if (file.isEmpty()) {
-            throw new FileStorageException("Cannot save an empty file.");
-        }
         String originalFilename = file.getOriginalFilename();
         if (originalFilename == null || originalFilename.trim().isEmpty()) {
             throw new FileStorageException("File name cannot be null or empty.");

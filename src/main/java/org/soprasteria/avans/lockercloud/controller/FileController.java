@@ -150,7 +150,7 @@ public class FileController {
         try {
             SyncResult result = fileManagerService.syncFiles(clientFiles);
             List<String> conflicts = Optional.ofNullable(result.getConflictFiles())
-                    .orElse(Collections.emptyList());
+                                             .orElse(Collections.emptyList());
             if (!conflicts.isEmpty()) {
                 return ResponseEntity
                         .status(HttpStatus.CONFLICT)
