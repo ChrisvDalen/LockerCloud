@@ -8,8 +8,8 @@ WORKDIR /app
 ARG JAR_FILE=target/LockerCloud-0.0.1-SNAPSHOT.jar
 COPY ${JAR_FILE} app.jar
 
-# Expose the port your Spring Boot application will run on
-EXPOSE 8080
+# Expose the secure port your Spring Boot application will run on
+EXPOSE 8443
 
 # Run the jar file
 ENTRYPOINT ["java", "-jar", "app.jar"]

@@ -19,6 +19,9 @@ target/
 *.iml
 *.ipr
 
+# Do not commit the SSL keystore used for HTTPS
+src/main/resources/keystore.p12
+
 ### NetBeans ###
 /nbproject/private/
 /nbbuild/
