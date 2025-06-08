@@ -16,7 +16,6 @@ import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.spy;
@@ -53,7 +52,7 @@ class FileManagerServiceTest {
         byte[] content = "hello".getBytes();
         MultipartFile file = new MockMultipartFile("file", "hello.txt", "text/plain", content);
 
-        service.saveFile(file);
+        service.saveFile(file, md5(content));
 
         Path written = storageDir.resolve("hello.txt");
         assertTrue(Files.exists(written), "File should be created");
@@ -65,7 +64,7 @@ class FileManagerServiceTest {
         MultipartFile file = spy(new MockMultipartFile("file", "error.txt", "text/plain", new byte[0]));
         when(file.getInputStream()).thenThrow(new java.io.IOException("disk full"));
 
-        FileStorageException ex = assertThrows(FileStorageException.class, () -> service.saveFile(file));
+        FileStorageException ex = assertThrows(FileStorageException.class, () -> service.saveFile(file, ""));
         assertTrue(ex.getMessage().contains("Error saving file error.txt"));
     }
 
@@ -78,7 +77,7 @@ class FileManagerServiceTest {
         long threshold = 4L * 1024 * 1024 * 1024;
         when(file.getSize()).thenReturn(threshold + 1);
 
-        service.saveFile(file);
+        service.saveFile(file, md5(data));
 
         Path chunk = storageDir.resolve("big.bin.part1");
         assertTrue(Files.exists(chunk), "Chunkbestand moet zijn geschreven");

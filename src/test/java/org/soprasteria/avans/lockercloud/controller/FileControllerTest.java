@@ -38,7 +38,7 @@ class FileControllerTest {
     }
 
     @Test
-    void uploadFile_success() throws Exception {
+    void uploadFile_success() {
         MultipartFile file = new MockMultipartFile("file", "test.txt", "text/plain", "data".getBytes());
         RedirectAttributes attrs = new RedirectAttributesModelMap();
 
@@ -47,13 +47,13 @@ class FileControllerTest {
         assertEquals("redirect:/", view);
         assertTrue(attrs.getFlashAttributes().containsKey("uploadSuccess"));
         assertEquals("Bestand test.txt succesvol geüpload!", attrs.getFlashAttributes().get("uploadSuccess"));
-        verify(fileManagerService).saveFileWithRetry(file);
+        verify(fileManagerService).saveFileWithRetry(eq(file), any());
     }
 
     @Test
-    void uploadFile_error() throws Exception {
+    void uploadFile_error()  {
         MultipartFile file = new MockMultipartFile("file", "bad.txt", "text/plain", "data".getBytes());
-        doThrow(new RuntimeException("oops")).when(fileManagerService).saveFileWithRetry(file);
+        doThrow(new RuntimeException("oops")).when(fileManagerService).saveFileWithRetry(eq(file), any());
         RedirectAttributes attrs = new RedirectAttributesModelMap();
 
         String view = controller.uploadFile(file, null, null, null, null, attrs);
@@ -61,11 +61,11 @@ class FileControllerTest {
         assertEquals("redirect:/", view);
         assertTrue(attrs.getFlashAttributes().containsKey("uploadError"));
         assertEquals("Fout bij uploaden: oops", attrs.getFlashAttributes().get("uploadError"));
-        verify(fileManagerService).saveFileWithRetry(file);
+        verify(fileManagerService).saveFileWithRetry(eq(file), any());
     }
 
     @Test
-    void downloadFile_success() throws Exception {
+    void downloadFile_success() {
         byte[] data = {1,2,3};
         String checksum = md5(data);
         when(fileManagerService.getFile("f.bin")).thenReturn(data);
@@ -93,7 +93,7 @@ class FileControllerTest {
     }
 
     @Test
-    void downloadAllFiles_noFiles() throws Exception {
+    void downloadAllFiles_noFiles()  {
         when(fileManagerService.listFiles()).thenReturn(Collections.emptyList());
 
         ResponseEntity<byte[]> resp = controller.downloadAllFiles();
@@ -102,6 +102,8 @@ class FileControllerTest {
         assertEquals("attachment; filename=\"all-files.zip\"", resp.getHeaders().getFirst(HttpHeaders.CONTENT_DISPOSITION));
         try (ZipInputStream zis = new ZipInputStream(new ByteArrayInputStream(resp.getBody()))) {
             assertNull(zis.getNextEntry());
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
     }
 
@@ -174,7 +176,7 @@ class FileControllerTest {
     }
 
     @Test
-    void deleteFile_success() throws Exception {
+    void deleteFile_success() {
         doNothing().when(fileManagerService).deleteFile("f");
 
         ResponseEntity<String> resp = controller.deleteFile("f");
@@ -184,7 +186,7 @@ class FileControllerTest {
     }
 
     @Test
-    void deleteFile_error() throws Exception {
+    void deleteFile_error()  {
         doThrow(new RuntimeException("fail del")).when(fileManagerService).deleteFile("f");
 
         ResponseEntity<String> resp = controller.deleteFile("f");
@@ -194,7 +196,7 @@ class FileControllerTest {
     }
 
     @Test
-    void listFiles_success() throws Exception {
+    void listFiles_success() {
         when(fileManagerService.listFiles()).thenReturn(Arrays.asList("a","b"));
 
         ResponseEntity<?> resp = controller.listFiles();
@@ -204,7 +206,7 @@ class FileControllerTest {
     }
 
     @Test
-    void listFiles_error() throws Exception {
+    void listFiles_error() {
         when(fileManagerService.listFiles()).thenThrow(new RuntimeException("list err"));
 
         ResponseEntity<?> resp = controller.listFiles();
@@ -214,7 +216,7 @@ class FileControllerTest {
     }
 
     @Test
-    void syncFiles_success() throws Exception {
+    void syncFiles_success() {
         List<FileMetadata> client = List.of(new FileMetadata());
         SyncResult result = new SyncResult();
         when(fileManagerService.syncFiles(client)).thenReturn(result);
@@ -226,7 +228,7 @@ class FileControllerTest {
     }
 
     @Test
-    void syncFiles_error() throws Exception {
+    void syncFiles_error()  {
         List<FileMetadata> client = List.of();
         when(fileManagerService.syncFiles(client)).thenThrow(new RuntimeException("sync fail"));
 
