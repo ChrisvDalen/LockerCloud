@@ -11,7 +11,7 @@ import org.springframework.security.web.SecurityFilterChain;
 class SecurityConfigContextTest {
 
     @Test
-    @Disabled
+    @Disabled("Faalt voor nu")
     void filterChainBeanBeschikbaar() {
         try (var ctx = new AnnotationConfigApplicationContext(SecurityConfig.class)) {
             assertTrue(ctx.containsBean("filterChain"),
