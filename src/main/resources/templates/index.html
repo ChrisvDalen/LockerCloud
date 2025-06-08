@@ -89,7 +89,7 @@
     <div class="card-header">Upload een bestand</div>
     <div class="card-body">
       <form
-              th:action="@{/api/files/upload}"
+              th:action="@{/uploadForm}"
               method="post"
               enctype="multipart/form-data"
       >
@@ -127,12 +127,12 @@
             <td th:text="${file}">Bestandsnaam</td>
             <td>
               <a
-                      th:href="@{/api/files/download(fileName=${file})}"
+                      th:href="@{/download(file=${file})}"
                       class="btn btn-sm btn-success"
               >Download</a
               >
               <a
-                      th:href="@{/api/files/delete(fileName=${file})}"
+                      th:href="@{/delete(file=${file})}"
                       class="btn btn-sm btn-danger"
                       onclick="return confirm('Weet je zeker dat je dit bestand wilt verwijderen?');"
               >Verwijderen</a
@@ -150,7 +150,7 @@
     <button id="syncBtn" class="btn btn-primary me-2">
       Synchroniseer
     </button>
-    <button id="downloadAllBtn" data-href="/api/files/downloadAll"
+    <button id="downloadAllBtn" data-href="/downloadAll"
             class="btn btn-success me-2">
       Download alles
     </button>
@@ -254,7 +254,7 @@
 
         const downloaded = getDownloadedSet();
 
-        fetch('/api/files/syncLocal')
+        fetch('/syncLocal')
             .then(async resp => {
                 if (!resp.ok) throw new Error(`Serverfout: ${resp.status}`);
                 return resp.json();
@@ -282,7 +282,7 @@
                 // Download new files sequentially
                 let rem = toDownload.length;
                 function downloadOne(name) {
-                    return fetch(`/api/files/download?fileName=${encodeURIComponent(name)}`)
+                    return fetch(`/download?file=${encodeURIComponent(name)}`)
                         .then(res => {
                             if (!res.ok) throw new Error(`Download mislukt: ${name}`);
                             return res.blob();
@@ -339,7 +339,7 @@
         const spinner = document.getElementById('loadingSpinner');
 
         // Add event listeners to all individual download buttons
-        document.querySelectorAll('a[href^="/api/files/download"]').forEach(function(downloadLink) {
+        document.querySelectorAll('a[href^="/download"]').forEach(function(downloadLink) {
             downloadLink.addEventListener('click', function() {
                 // Show the spinner
                 spinner.style.display = 'flex';
