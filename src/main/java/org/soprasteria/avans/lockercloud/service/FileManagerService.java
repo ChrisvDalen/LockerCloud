@@ -28,6 +28,9 @@ import org.slf4j.LoggerFactory;
 @Service
 public class FileManagerService {
 
+    // Voor grote bestanden groter dan 4GB wordt chunking toegepast
+    private static final long CHUNK_THRESHOLD = 4L * 1024 * 1024 * 1024; // 4 GB
+    private static final long CHUNK_SIZE = 10 * 1024 * 1024; // 10 MB
     private static final Logger logger = LoggerFactory.getLogger(FileManagerService.class);
     // Bestanden groter dan 4GB moeten in chunks worden verwerkt volgens het protocol
     private static final long CHUNK_THRESHOLD = 4L * 1024 * 1024 * 1024; // 4 GB
@@ -358,13 +361,20 @@ public class FileManagerService {
         }
     }
 
-    // Helper to convert a byte array to hex string (used for large file checksum)
-    private String bytesToHex(byte[] digest) {
-        StringBuilder sb = new StringBuilder();
-        for (byte b : digest) {
-            sb.append(String.format("%02x", b));
+    // Publieke helper voor het berekenen van een MD5-checksum van een bytearray
+    public String calculateChecksum(byte[] data) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("MD5");
+            md.update(data);
+            byte[] digest = md.digest();
+            StringBuilder sb = new StringBuilder();
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("MD5 algorithm not found", e);
         }
-        return sb.toString();
     }
 
     /**
@@ -426,6 +436,93 @@ public class FileManagerService {
                 logger.error("Failed to delete temp file {} during transactional save error handling.", tempPath);
             }
             throw new FileStorageException("Failed transactional save for " + normalizedFileName, e);
+        }
+    }
+
+    @Retryable(value = { IOException.class }, maxAttempts = 3, backoff = @Backoff(delay = 2000))
+    public void saveFileTransactionalWithRetry(MultipartFile file, String expectedChecksum) {
+        saveFileTransactional(file, expectedChecksum);
+    }
+
+    @Recover
+    public void recoverSaveFileTransactional(IOException e, MultipartFile file, String expectedChecksum) {
+        String fileName = file.getOriginalFilename();
+        if (fileName != null) {
+            deleteFileChunks(fileName);
+            try {
+                Files.deleteIfExists(storageLocation.resolve(fileName));
+            } catch (IOException ex) {
+                System.err.println("Failed to delete main file during recovery:" + fileName);
+            }
+        }
+        throw new FileStorageException("Failed to upload file '" + fileName + "' after retries.", e);
+    }
+
+    @Retryable(value = { IOException.class }, maxAttempts = 3, backoff = @Backoff(delay = 2000))
+    public void saveFileChunkWithRetry(MultipartFile chunk, int chunkIndex, int chunkTotal,
+                                       String chunkChecksum, String finalChecksum) {
+        saveFileChunk(chunk, chunkIndex, chunkTotal, chunkChecksum, finalChecksum);
+    }
+
+    @Recover
+    public void recoverSaveFileChunk(IOException e, MultipartFile chunk, int chunkIndex, int chunkTotal,
+                                     String chunkChecksum, String finalChecksum) {
+        String fileName = chunk.getOriginalFilename();
+        if (fileName != null) {
+            deleteFileChunks(fileName);
+        }
+        throw new FileStorageException("Failed to upload chunk " + chunkIndex + " of '" + fileName + "'", e);
+    }
+
+    private void saveFileChunk(MultipartFile chunk, int index, int total,
+                               String chunkChecksum, String finalChecksum) {
+        String originalFileName = chunk.getOriginalFilename();
+        if (originalFileName == null || originalFileName.trim().isEmpty()) {
+            throw new FileStorageException("File name missing for chunk upload.");
+        }
+        String normalized = Paths.get(originalFileName).getFileName().toString();
+        try {
+            if (chunkChecksum != null) {
+                try (InputStream in = chunk.getInputStream()) {
+                    String actual = calculateChecksum(in);
+                    if (!actual.equalsIgnoreCase(chunkChecksum)) {
+                        throw new FileStorageException("Checksum mismatch for chunk " + index + " of " + normalized);
+                    }
+                }
+            }
+
+            Path chunkPath = storageLocation.resolve(normalized + ".part" + index);
+            try (InputStream in = chunk.getInputStream()) {
+                Files.copy(in, chunkPath, StandardCopyOption.REPLACE_EXISTING);
+            }
+
+            if (index == total) {
+                assembleChunks(normalized, total, finalChecksum);
+            }
+        } catch (IOException e) {
+            throw new FileStorageException("Error saving chunk " + index + " of " + normalized, e);
+        }
+    }
+
+    private void assembleChunks(String fileName, int total, String expectedChecksum) throws IOException {
+        Path finalPath = storageLocation.resolve(fileName);
+        try (OutputStream out = Files.newOutputStream(finalPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
+            for (int i = 1; i <= total; i++) {
+                Path part = storageLocation.resolve(fileName + ".part" + i);
+                Files.copy(part, out);
+            }
+        }
+
+        if (expectedChecksum != null) {
+            String actual = calculateChecksum(finalPath);
+            if (!actual.equalsIgnoreCase(expectedChecksum)) {
+                Files.deleteIfExists(finalPath);
+                throw new FileStorageException("Final checksum mismatch for " + fileName);
+            }
+        }
+
+        for (int i = 1; i <= total; i++) {
+            Files.deleteIfExists(storageLocation.resolve(fileName + ".part" + i));
         }
     }
 

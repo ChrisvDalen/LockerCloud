@@ -56,10 +56,19 @@ public class FileController {
     @PostMapping("/uploadForm")
     public String uploadFile(
             @RequestParam("file") MultipartFile file,
+            @RequestHeader(value = "Checksum", required = false) String checksum,
+            @RequestHeader(value = "Chunk-Index", required = false) Integer chunkIndex,
+            @RequestHeader(value = "Chunk-Total", required = false) Integer chunkTotal,
+            @RequestHeader(value = "File-Checksum", required = false) String fileChecksum,
             RedirectAttributes redirectAttributes) {
         try {
-            String checksum = calculateRequestChecksum(file);
-            fileManagerService.saveFileWithRetry(file, checksum);
+            if (chunkIndex != null && chunkTotal != null) {
+                fileManagerService.saveFileChunkWithRetry(file, chunkIndex, chunkTotal, checksum, fileChecksum);
+            } else if (checksum != null && !checksum.isBlank()) {
+                fileManagerService.saveFileTransactionalWithRetry(file, checksum);
+            } else {
+                fileManagerService.saveFileWithRetry(file);
+            }
             redirectAttributes.addFlashAttribute(
               "uploadSuccess",
               "Bestand " + file.getOriginalFilename() + " succesvol geüpload!"
@@ -94,10 +103,11 @@ public class FileController {
     public ResponseEntity<byte[]> downloadFile(@RequestParam("file") String fileName) {
         try {
             byte[] fileData = fileManagerService.getFile(fileName);
-            String checksum = calculateChecksumBytes(fileData);
+            String checksum = fileManagerService.calculateChecksum(fileData);
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileName + "\"")
                     .header("Checksum", checksum)
+                    .contentLength(fileData.length)
                     .contentType(MediaType.APPLICATION_OCTET_STREAM)
                     .body(fileData);
         } catch (Exception e) {
