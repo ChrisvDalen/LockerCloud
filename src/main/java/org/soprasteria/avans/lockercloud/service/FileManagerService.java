@@ -1,20 +1,14 @@
 package org.soprasteria.avans.lockercloud.service;
 
-import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import org.soprasteria.avans.lockercloud.dto.SyncResult;
 import org.soprasteria.avans.lockercloud.exception.FileStorageException;
 import org.soprasteria.avans.lockercloud.model.FileMetadata;
-import org.springframework.retry.annotation.Backoff;
-import org.springframework.retry.annotation.Recover;
-import org.springframework.retry.annotation.Retryable;
-import org.springframework.scheduling.annotation.Async;
-import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
 
-import java.io.*;
 import java.nio.file.*;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+
+import java.io.*;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.*;
@@ -25,7 +19,6 @@ import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-@Service
 public class FileManagerService {
 
     // Voor grote bestanden groter dan 4GB wordt chunking toegepast
@@ -33,15 +26,15 @@ public class FileManagerService {
     private static final long CHUNK_SIZE = 10 * 1024 * 1024; // 10 MB
     private static final Logger logger = LoggerFactory.getLogger(FileManagerService.class);
     // Bestanden groter dan 4GB moeten in chunks worden verwerkt volgens het protocol
-    private static final long CHUNK_THRESHOLD = 4L * 1024 * 1024 * 1024; // 4 GB
-    private static final long CHUNK_SIZE = 10L * 1024 * 1024; // 10 MB
     private static final long MOD_TIME_THRESHOLD_MS = 1000L;
 
-    private final Path storageLocation = Paths.get("filestorage");
+    private final Path storageLocation;
     // Simuleer de lokale client map (bijvoorbeeld een synchronisatie map op de client)
-    private final Path clientLocalLocation = Paths.get("clientSync");
+    private final Path clientLocalLocation;
 
-    public FileManagerService() {
+    public FileManagerService(Path storageLocation, Path clientLocalLocation) {
+        this.storageLocation = storageLocation;
+        this.clientLocalLocation = clientLocalLocation;
         try {
             Files.createDirectories(storageLocation);
             Files.createDirectories(clientLocalLocation);
@@ -52,33 +45,14 @@ public class FileManagerService {
 
     // Bestaande methoden (saveFile, getFile, deleteFile, listFiles) blijven grotendeels hetzelfde
 
-    public void saveFile(MultipartFile file, String expectedChecksum) {
-        String originalFilename = file.getOriginalFilename();
-        if (originalFilename == null || originalFilename.trim().isEmpty()) {
-            throw new FileStorageException("File name cannot be null or empty.");
-        }
-        String normalizedFilename = Paths.get(originalFilename).getFileName().toString();
-        Path targetLocation = storageLocation.resolve(normalizedFilename);
-
-        try {
-            if (file.getSize() > CHUNK_THRESHOLD) {
-                // Grote bestanden: chunking logica
-                saveLargeFile(file, expectedChecksum);
-                return;
-            }
-
-            // Kleine bestanden: transactionele opslag met checksum-validatie
+                // Kleine bestanden: transactionele opslag met checksum-validatie
             saveFileTransactional(file, expectedChecksum);
         } catch (IOException e) {
             throw new FileStorageException("Error saving file " + normalizedFilename, e);
         }
     }
 
-    @Retryable(retryFor = { IOException.class }, maxAttempts = 3, backoff = @Backoff(delay = 2000))
-    public void saveFileWithRetry(MultipartFile file, String expectedChecksum) {
-        saveFile(file, expectedChecksum);
-    }
-
+    
     /**
      * Save raw data from an InputStream. This simplified method is used by the
      * SSL socket server where uploads are handled without a Multipart request.
@@ -96,39 +70,11 @@ public class FileManagerService {
         }
     }
 
-    @Recover
-    public void recoverSaveFile(IOException e, MultipartFile file) { // Corrected signature
-        String fileName = file.getOriginalFilename();
-        if (fileName != null) {
-            deleteFileChunks(fileName); // Also delete the potentially incomplete main file if not chunked
-            try {
-                Files.deleteIfExists(storageLocation.resolve(fileName));
-            } catch (IOException ex) {
-                logger.error("Failed to delete main file during recovery: {}", fileName);
             }
-        }
         throw new FileStorageException("Failed to upload file '" + fileName + "' after retries.", e);
     }
 
-    private void saveLargeFile(MultipartFile file, String expectedChecksum) {
-        String originalFileName = Paths.get(file.getOriginalFilename()).getFileName().toString();
-        try (InputStream inputStream = file.getInputStream()) {
-            MessageDigest md = MessageDigest.getInstance("MD5");
-            byte[] buffer = new byte[(int) CHUNK_SIZE];
-            int bytesRead;
-            int chunkIndex = 1;
-            List<Path> writtenChunks = new ArrayList<>();
-
-            // 1) Schrijf alle chunks
-            while ((bytesRead = inputStream.read(buffer)) != -1) {
-                md.update(buffer, 0, bytesRead);
-                String chunkName = originalFileName + ".part" + chunkIndex++;
-                Path chunkPath = storageLocation.resolve(chunkName);
-                try (OutputStream os = Files.newOutputStream(chunkPath,
-                        StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
-                    os.write(buffer, 0, bytesRead);
-                }
-                writtenChunks.add(chunkPath);
+                    writtenChunks.add(chunkPath);
             }
 
             // 2) Assembleer ze meteen in één bestand
@@ -193,8 +139,6 @@ public class FileManagerService {
         return new byte[0]; // of null, of een specifieke error-indicator
     }
 
-    @CircuitBreaker(name = "fileService", fallbackMethod = "getFileFallback")
-    @Retryable(retryFor = { IOException.class }, maxAttempts = 3, backoff = @Backoff(delay = 2000))
     public byte[] getFile(String fileName) {
         String normalizedFileName = Paths.get(fileName).getFileName().toString(); // Normalize
         Path filePath = storageLocation.resolve(normalizedFileName);
@@ -226,7 +170,6 @@ public class FileManagerService {
         }
     }
 
-    @Recover
     public byte[] recoverGetFile(IOException e, String fileName) {
         // cleanup if needed, log, then throw or return an error sentinel
         deleteFileChunks(fileName);
@@ -270,7 +213,7 @@ public class FileManagerService {
                     .map(path -> path.getFileName().toString())
                     .filter(name -> !name.contains(".part")) // Exclude chunk files from list
                     .sorted() // Sort for consistent order
-                    .toList()
+                    .toList();
         } catch (IOException e) {
             logger.error("Error listing files from master storage: {}", e.getMessage());
             return Collections.emptyList();
@@ -404,18 +347,12 @@ public class FileManagerService {
         return syncFiles(clientFiles);
     }
 
-    @Async
     public CompletableFuture<SyncResult> syncLocalClientFilesAsync() {
         SyncResult result = syncLocalClientFiles();
         return CompletableFuture.completedFuture(result);
     }
 
-    public void saveFileTransactional(MultipartFile file, String expectedChecksum) {
-        String originalFileName = file.getOriginalFilename();
-        if (originalFileName == null || originalFileName.trim().isEmpty()) {
-            throw new FileStorageException("File name is null or empty for transactional save.");
-        }
-        String normalizedFileName = Paths.get(originalFileName).getFileName().toString(); // Normalize
+            String normalizedFileName = Paths.get(originalFileName).getFileName().toString(); // Normalize
 
         Path tempPath = storageLocation.resolve(normalizedFileName + ".tmp");
         Path finalPath = storageLocation.resolve(normalizedFileName);
@@ -439,48 +376,16 @@ public class FileManagerService {
         }
     }
 
-    @Retryable(value = { IOException.class }, maxAttempts = 3, backoff = @Backoff(delay = 2000))
-    public void saveFileTransactionalWithRetry(MultipartFile file, String expectedChecksum) {
-        saveFileTransactional(file, expectedChecksum);
-    }
-
-    @Recover
-    public void recoverSaveFileTransactional(IOException e, MultipartFile file, String expectedChecksum) {
-        String fileName = file.getOriginalFilename();
-        if (fileName != null) {
-            deleteFileChunks(fileName);
-            try {
-                Files.deleteIfExists(storageLocation.resolve(fileName));
-            } catch (IOException ex) {
-                System.err.println("Failed to delete main file during recovery:" + fileName);
+    
             }
-        }
         throw new FileStorageException("Failed to upload file '" + fileName + "' after retries.", e);
     }
 
-    @Retryable(value = { IOException.class }, maxAttempts = 3, backoff = @Backoff(delay = 2000))
-    public void saveFileChunkWithRetry(MultipartFile chunk, int chunkIndex, int chunkTotal,
-                                       String chunkChecksum, String finalChecksum) {
-        saveFileChunk(chunk, chunkIndex, chunkTotal, chunkChecksum, finalChecksum);
+    
+            throw new FileStorageException("Failed to upload chunk " + chunkIndex + " of '" + fileName + "'", e);
     }
 
-    @Recover
-    public void recoverSaveFileChunk(IOException e, MultipartFile chunk, int chunkIndex, int chunkTotal,
-                                     String chunkChecksum, String finalChecksum) {
-        String fileName = chunk.getOriginalFilename();
-        if (fileName != null) {
-            deleteFileChunks(fileName);
-        }
-        throw new FileStorageException("Failed to upload chunk " + chunkIndex + " of '" + fileName + "'", e);
-    }
-
-    private void saveFileChunk(MultipartFile chunk, int index, int total,
-                               String chunkChecksum, String finalChecksum) {
-        String originalFileName = chunk.getOriginalFilename();
-        if (originalFileName == null || originalFileName.trim().isEmpty()) {
-            throw new FileStorageException("File name missing for chunk upload.");
-        }
-        String normalized = Paths.get(originalFileName).getFileName().toString();
+            String normalized = Paths.get(originalFileName).getFileName().toString();
         try {
             if (chunkChecksum != null) {
                 try (InputStream in = chunk.getInputStream()) {
@@ -552,7 +457,6 @@ public class FileManagerService {
         return syncFiles(clientLocalFilesMetadata);
     }
 
-    @Async
     public CompletableFuture<SyncResult> performServerSideLocalSyncAsync() { // Changed to call the new method
         SyncResult result = performServerSideLocalSync();
         return CompletableFuture.completedFuture(result);
