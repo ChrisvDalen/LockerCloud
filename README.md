@@ -1,49 +1,46 @@
 # LockerCloud
 
-This project is a Spring Boot application for managing files.
+LockerCloud is a small file sharing server implemented with plain Java sockets. It no longer relies on Spring MVC or HTTP. Communication happens over TCP using simple text commands. A reference client is included for testing.
 
-## HTTPS and WebSocket security
+## Building
 
-The application exposes HTTPS on port `8443`. Provide a PKCS#12 keystore named
-`keystore.p12` in the project root (or set the `SSL_KEYSTORE` environment
-variable to its location) before running the application. The relevant
-configuration is in `src/main/resources/application.properties`.
-
-When running in Docker, the container also exposes port `8443` for secure
-connections. WebSocket connections should use the `wss://` protocol when the
-server is accessed via HTTPS.
-
-### Generating a certificate
-
-The repository does not include a keystore. Generate one with `keytool` and
-place the resulting `keystore.p12` in the project root (or point
-`SSL_KEYSTORE` to it) **before** starting the application:
+Compile the sources with `javac` and place the class files in a directory of your choice. For example:
 
 ```bash
-keytool -genkeypair -alias lockercloud -keyalg RSA -keysize 2048 \
-  -storetype PKCS12 -keystore keystore.p12 -validity 3650 \
-  -storepass <password> -dname "CN=LockerCloud"
+mkdir -p out
+javac -d out $(find src/main/java -name "*.java")
 ```
-After creating the keystore, build the project and start the container
-(rebuild ensures the latest jar is used):
+
+## Running the server
+
+Create a `config.properties` file (one is provided) to configure the port, storage path and optional authentication token and AES key. Start the server with:
 
 ```bash
-mvn clean package
-podman compose up --build
+java -cp out org.soprasteria.avans.lockercloud.socketapp.SocketServer config.properties
 ```
-The compose file mounts `keystore.p12` into the container at startup. Ensure the
-file is present in the project root (or adjust `SSL_KEYSTORE` accordingly).
-## SSL Socket Server
 
-The application also starts an SSL socket server on port `9000` at runtime. This server exposes simple commands for file upload, download, listing and deletion without using HTTP. Each connection accepts a single command in the form:
+Uploaded files are stored in the directory specified by `storagePath`.
+
+## Running the client
+
+The simple `SocketClient` class can be used to upload or download files. It expects the host, port, token and AES key from the configuration file. Example:
+
+```bash
+java -cp out org.soprasteria.avans.lockercloud.socketapp.SocketClient
+```
+
+Edit the client code to call `upload()` or `download()` as needed.
+
+## Protocol
+
+The server understands the following commands over a TCP connection:
 
 ```
+AUTH <token>
 UPLOAD <filename> <length>\n<bytes...>
-DOWNLOAD <filename>\n
-DELETE <filename>\n
-LIST\n
+DOWNLOAD <filename>
+DELETE <filename>
+LIST
 ```
 
-Responses are plain text or raw bytes. The server uses the same `keystore.p12` for TLS encryption.
-
-YourPasswordHere = password;
+Responses are plain text (for commands) or raw bytes (for downloads). If an AES key is configured, all file data is encrypted using AES.
