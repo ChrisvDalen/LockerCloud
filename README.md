@@ -51,8 +51,17 @@ DELETE <filename>\n
 LIST\n
 ```
 
-The server responds with `OK` or the requested data. Enable application logging
-to verify that commands were received.
+The server responds with `OK` or the requested data. **Port `9000` does not
+implement HTTP**, so accessing it from a browser will fail with a TLS error.
+Use an SSL-capable client such as `openssl`:
+
+```bash
+openssl s_client -connect localhost:9000 -quiet <<'EOF'
+LIST
+EOF
+```
+
+Enable application logging to verify that commands were received.
 
 HTTP controllers are **disabled** unless the `http` Spring profile is active.
 If you want to use the web interface or REST API, set the environment variable

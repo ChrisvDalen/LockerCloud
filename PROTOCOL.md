@@ -1,6 +1,6 @@
 # LockerCloud Socket Protocol
 
-LockerCloud communicates over an SSL socket on port `9000`. Each command is sent as an ASCII line followed by optional binary data. The server replies with `OK`, `ERR` or the requested bytes.
+LockerCloud communicates over an SSL socket on port `9000`. **This port does not speak HTTP.** Each command is sent as an ASCII line followed by optional binary data. The server replies with `OK`, `ERR` or the requested bytes.
 
 ## Commands
 
