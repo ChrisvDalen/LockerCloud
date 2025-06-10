@@ -1,14 +1,10 @@
 package org.soprasteria.avans.lockercloud.syncserver;
 
-import sun.security.tools.keytool.CertAndKeyGen;
-import sun.security.x509.X500Name;
-
-import java.io.OutputStream;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyStore;
-import java.security.cert.Certificate;
-import java.security.cert.X509Certificate;
+import java.util.concurrent.TimeUnit;
 
 /** Utility class for generating an in-memory keystore for SSL tests. */
 public final class KeyStoreTestUtils {
@@ -23,17 +19,30 @@ public final class KeyStoreTestUtils {
     public static Path createTempKeyStore(String password) throws Exception {
         Path file = Files.createTempFile("test-keystore", ".jks");
 
-        CertAndKeyGen gen = new CertAndKeyGen("RSA", "SHA256withRSA");
-        gen.generate(2048);
-        X509Certificate cert = gen.getSelfCertificate(new X500Name("CN=Test"), 365 * 24L * 60L * 60L);
+        ProcessBuilder pb = new ProcessBuilder(
+                "keytool", "-genkeypair",
+                "-alias", "alias",
+                "-keyalg", "RSA",
+                "-keystore", file.toString(),
+                "-storepass", password,
+                "-keypass", password,
+                "-dname", "CN=Test",
+                "-storetype", "JKS",
+                "-validity", "365");
+        Process p = pb.start();
+        if (!p.waitFor(5, TimeUnit.SECONDS)) {
+            p.destroyForcibly();
+            throw new RuntimeException("keytool timed out");
+        }
+        if (p.exitValue() != 0) {
+            throw new RuntimeException("keytool failed with exit code " + p.exitValue());
+        }
 
         KeyStore ks = KeyStore.getInstance("JKS");
-        ks.load(null, null);
-        ks.setKeyEntry("alias", gen.getPrivateKey(), password.toCharArray(), new Certificate[]{cert});
-
-        try (OutputStream out = Files.newOutputStream(file)) {
-            ks.store(out, password.toCharArray());
+        try (InputStream in = Files.newInputStream(file)) {
+            ks.load(in, password.toCharArray());
         }
+
         return file;
     }
 }
