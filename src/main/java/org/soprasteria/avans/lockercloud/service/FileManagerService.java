@@ -1,310 +1,105 @@
 package org.soprasteria.avans.lockercloud.service;
 
-import org.soprasteria.avans.lockercloud.dto.SyncResult;
 import org.soprasteria.avans.lockercloud.exception.FileStorageException;
-import org.soprasteria.avans.lockercloud.model.FileMetadata;
 
+import java.io.*;
 import java.nio.file.*;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-
-import java.io.*;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+/**
+ * Minimal file management service for the socket based server.
+ * Stores files in a configured directory and supports chunked uploads.
+ */
 public class FileManagerService {
-
-    // Voor grote bestanden groter dan 4GB wordt chunking toegepast
     private static final long CHUNK_THRESHOLD = 4L * 1024 * 1024 * 1024; // 4 GB
     private static final long CHUNK_SIZE = 10 * 1024 * 1024; // 10 MB
-    private static final Logger logger = LoggerFactory.getLogger(FileManagerService.class);
-    // Bestanden groter dan 4GB moeten in chunks worden verwerkt volgens het protocol
-    private static final long MOD_TIME_THRESHOLD_MS = 1000L;
 
     private final Path storageLocation;
-    // Simuleer de lokale client map (bijvoorbeeld een synchronisatie map op de client)
-    private final Path clientLocalLocation;
 
-    public FileManagerService(Path storageLocation, Path clientLocalLocation) {
+    public FileManagerService(Path storageLocation) {
         this.storageLocation = storageLocation;
-        this.clientLocalLocation = clientLocalLocation;
         try {
             Files.createDirectories(storageLocation);
-            Files.createDirectories(clientLocalLocation);
         } catch (IOException e) {
-            throw new FileStorageException("Could not create storage directories", e);
+            throw new FileStorageException("Could not create storage directory", e);
         }
     }
 
-    // Bestaande methoden (saveFile, getFile, deleteFile, listFiles) blijven grotendeels hetzelfde
-
-                // Kleine bestanden: transactionele opslag met checksum-validatie
-            saveFileTransactional(file, expectedChecksum);
-        } catch (IOException e) {
-            throw new FileStorageException("Error saving file " + normalizedFilename, e);
-        }
-    }
-
-    
     /**
-     * Save raw data from an InputStream. This simplified method is used by the
-     * SSL socket server where uploads are handled without a Multipart request.
+     * Save a file from an InputStream. Large files are written in chunks.
      */
-    public void saveStream(String fileName, InputStream stream) {
-        if (fileName == null || fileName.trim().isEmpty()) {
-            throw new FileStorageException("File name cannot be null or empty.");
-        }
+    public void saveStream(String fileName, InputStream input) {
+        Objects.requireNonNull(fileName, "fileName");
+        Objects.requireNonNull(input, "input");
         String normalized = Paths.get(fileName).getFileName().toString();
         Path target = storageLocation.resolve(normalized);
         try {
-            Files.copy(stream, target, StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(input, target, StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException e) {
             throw new FileStorageException("Error saving file " + normalized, e);
         }
     }
 
-            }
-        throw new FileStorageException("Failed to upload file '" + fileName + "' after retries.", e);
-    }
-
-                    writtenChunks.add(chunkPath);
-            }
-
-            // 2) Assembleer ze meteen in één bestand
-            Path finalPath = storageLocation.resolve(originalFileName);
-            try (OutputStream finalOs = Files.newOutputStream(finalPath,
-                    StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
-                // sorteren op index zodat de volgorde klopt
-                writtenChunks.stream()
-                        .sorted(Comparator.comparing(p -> {
-                            String s = p.getFileName().toString()
-                                    .replace(originalFileName + ".part", "");
-                            return Integer.parseInt(s);
-                        }))
-                        .forEach(chunkPath -> {
-                            try {
-                                Files.copy(chunkPath, finalOs);
-                            } catch (IOException e) {
-                                throw new UncheckedIOException(e);
-                            }
-                        });
-            }
-
-            String actualChecksum = bytesToHex(md.digest());
-            if (expectedChecksum != null && !expectedChecksum.equalsIgnoreCase(actualChecksum)) {
-                Files.deleteIfExists(finalPath);
-                deleteFileChunks(originalFileName);
-                throw new FileStorageException("Checksum mismatch for file " + originalFileName);
-            }
-
-            // 3) (Optioneel) verwijder de chunk-bestanden
-            // Verwijderen uitgeschakeld voor testondersteuning
-            // for (Path chunk : writtenChunks) {
-            //     Files.deleteIfExists(chunk);
-            // }
-        } catch (IOException | NoSuchAlgorithmException e) {
-            // bestaande cleanup
-            deleteFileChunks(originalFileName);
-            throw new FileStorageException("Error saving large file " + originalFileName, e);
-        }
-    }
-
-
-    private void deleteFileChunks(String originalFileName) {
-        if (originalFileName == null) return;
-        String normalizedOriginalFileName = Paths.get(originalFileName).getFileName().toString();
-        try (Stream<Path> stream = Files.list(storageLocation)) {
-            stream.filter(path -> path.getFileName().toString().startsWith(normalizedOriginalFileName + ".part"))
-                    .forEach(path -> {
-                        try {
-                            Files.deleteIfExists(path);
-                        } catch (IOException ex) {
-                            logger.error("Failed to delete chunk {}: {}", path.getFileName(), ex.getMessage());
-                        }
-                    });
-        } catch (IOException e) {
-            logger.error("Error listing directory for deleting chunks of {}: {}", normalizedOriginalFileName, e.getMessage());
-        }
-    }
-
-    public byte[] getFileFallback(String fileName, Throwable t) {
-        logger.error("CircuitBreaker tripped on getFile: {}", t.getMessage());
-        return new byte[0]; // of null, of een specifieke error-indicator
-    }
-
+    /**
+     * Retrieve a file or assemble it from chunk parts.
+     */
     public byte[] getFile(String fileName) {
-        String normalizedFileName = Paths.get(fileName).getFileName().toString(); // Normalize
-        Path filePath = storageLocation.resolve(normalizedFileName);
+        String normalized = Paths.get(fileName).getFileName().toString();
+        Path filePath = storageLocation.resolve(normalized);
         if (Files.exists(filePath)) {
             try {
                 return Files.readAllBytes(filePath);
             } catch (IOException e) {
-                throw new FileStorageException("Error reading file " + normalizedFileName, e);
-            }
-        } else {
-            // Attempt to reassemble from chunks if main file not found
-            try (Stream<Path> stream = Files.list(storageLocation)) {
-                List<Path> chunks = stream
-                        .filter(path -> path.getFileName().toString().startsWith(normalizedFileName + ".part"))
-                        .sorted(Comparator.comparingInt(p -> extractChunkIndex(p.getFileName().toString(), normalizedFileName)))
-                        .collect(Collectors.toList());
-                if (chunks.isEmpty()) {
-                    throw new FileStorageException("File not found: " + normalizedFileName);
-                }
-                ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-                for (Path chunk : chunks) {
-                    byte[] chunkData = Files.readAllBytes(chunk);
-                    outputStream.write(chunkData);
-                }
-                return outputStream.toByteArray();
-            } catch (IOException e) {
-                throw new FileStorageException("Error reading file chunks for " + normalizedFileName, e);
+                throw new FileStorageException("Error reading file " + normalized, e);
             }
         }
-    }
-
-    public byte[] recoverGetFile(IOException e, String fileName) {
-        // cleanup if needed, log, then throw or return an error sentinel
-        deleteFileChunks(fileName);
-        throw new FileStorageException("Failed to download '" + fileName + "' after retries", e);
-    }
-
-    private int extractChunkIndex(String chunkFileName, String originalFileName) {
-        String prefix = originalFileName + ".part";
-        if (chunkFileName.startsWith(prefix)) {
-            try {
-                return Integer.parseInt(chunkFileName.substring(prefix.length()));
-            } catch (NumberFormatException e) {
-                // Malformed chunk name
-                logger.error("Malformed chunk index for: {}" + chunkFileName);
-                return Integer.MAX_VALUE; // Sorts malformed to the end
+        // attempt to reassemble from chunks
+        try (Stream<Path> stream = Files.list(storageLocation)) {
+            List<Path> chunks = stream
+                    .filter(p -> p.getFileName().toString().startsWith(normalized + ".part"))
+                    .sorted(Comparator.comparingInt(p -> extractChunkIndex(p.getFileName().toString(), normalized)))
+                    .collect(Collectors.toList());
+            if (chunks.isEmpty()) {
+                throw new FileStorageException("File not found: " + normalized);
             }
-        }
-        return Integer.MAX_VALUE; // Not a valid chunk name for this original file
-    }
-
-    public void deleteFile(String fileName) {
-        if (fileName == null || fileName.trim().isEmpty()) return;
-        String normalizedFileName = Paths.get(fileName).getFileName().toString(); // Normalize
-        try {
-            Path filePath = storageLocation.resolve(normalizedFileName);
-            Files.deleteIfExists(filePath);
-            deleteFileChunks(normalizedFileName); // Delete any associated chunks
-
-            // Also delete from clientLocalLocation if it exists there to keep them in sync
-            Path clientSyncFilePath = clientLocalLocation.resolve(normalizedFileName);
-            Files.deleteIfExists(clientSyncFilePath);
-            logger.info("Deleted '{}' from master and client sync locations.", normalizedFileName);
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            for (Path chunk : chunks) {
+                out.write(Files.readAllBytes(chunk));
+            }
+            return out.toByteArray();
         } catch (IOException e) {
-            throw new FileStorageException("Error deleting file " + normalizedFileName, e);
+            throw new FileStorageException("Error reading file chunks for " + normalized, e);
         }
     }
 
+    /** Delete a file and any chunk parts. */
+    public void deleteFile(String fileName) {
+        String normalized = Paths.get(fileName).getFileName().toString();
+        try {
+            Files.deleteIfExists(storageLocation.resolve(normalized));
+            deleteChunks(normalized);
+        } catch (IOException e) {
+            throw new FileStorageException("Error deleting file " + normalized, e);
+        }
+    }
+
+    /** List all stored files excluding chunk parts. */
     public List<String> listFiles() {
         try (Stream<Path> stream = Files.list(storageLocation)) {
             return stream.filter(Files::isRegularFile)
-                    .map(path -> path.getFileName().toString())
-                    .filter(name -> !name.contains(".part")) // Exclude chunk files from list
-                    .sorted() // Sort for consistent order
-                    .toList();
+                    .map(p -> p.getFileName().toString())
+                    .filter(n -> !n.contains(".part"))
+                    .sorted()
+                    .collect(Collectors.toList());
         } catch (IOException e) {
-            logger.error("Error listing files from master storage: {}", e.getMessage());
             return Collections.emptyList();
         }
     }
 
-    public SyncResult syncFiles(List<FileMetadata> clientProvidedMetadataList) {
-        Map<String, FileMetadata> clientMap = clientProvidedMetadataList.stream()
-            .collect(Collectors.toMap(FileMetadata::getFileName, fm -> fm, (fm1, fm2) -> fm1)); // Handle duplicates if any
-
-        Map<String, FileMetadata> serverMasterMap = getDirectoryMetadata(this.storageLocation); // Use helper
-
-        Set<String> allFileNames = new HashSet<>();
-        allFileNames.addAll(clientMap.keySet());
-        allFileNames.addAll(serverMasterMap.keySet());
-
-        List<String> toUpload = new ArrayList<>();    // Files client has that server doesn't, or client is newer
-        List<String> toDownload = new ArrayList<>();  // Files server has that client doesn't, or server is newer
-        List<String> conflicts = new ArrayList<>();
-
-        for (String name : allFileNames) {
-            FileMetadata cMeta = clientMap.get(name);
-            FileMetadata sMeta = serverMasterMap.get(name);
-
-            if (sMeta == null) {
-                if (cMeta != null) toUpload.add(name);
-                continue;
-            }
-            if (cMeta == null) {
-                toDownload.add(name);
-                continue;
-            }
-            if (cMeta.getChecksum() != null && sMeta.getChecksum() != null &&
-                cMeta.getChecksum().equals(sMeta.getChecksum())) {
-                continue;
-            }
-            long diff = Math.abs(cMeta.getLastModified() - sMeta.getLastModified());
-            if (diff <= MOD_TIME_THRESHOLD_MS) {
-                conflicts.add(name);
-            } else if (cMeta.getLastModified() > sMeta.getLastModified()) {
-                toUpload.add(name);
-            } else if (sMeta.getLastModified() > cMeta.getLastModified()) {
-                toDownload.add(name);
-            } else {
-                conflicts.add(name);
-            }
-        }
-        return new SyncResult(toUpload, toDownload, conflicts);
-    }
-
-    // Helper om MD5-checksum te berekenen
-    private String calculateChecksum(Path filePath) throws IOException {
-        try (InputStream fis = Files.newInputStream(filePath)) {
-            MessageDigest md = MessageDigest.getInstance("MD5");
-            byte[] buffer = new byte[1024];
-            int bytesRead;
-            while ((bytesRead = fis.read(buffer)) != -1) {
-                md.update(buffer, 0, bytesRead);
-            }
-            byte[] digest = md.digest();
-            StringBuilder sb = new StringBuilder();
-            for (byte b : digest) {
-                sb.append(String.format("%02x", b));
-            }
-            return sb.toString();
-        } catch (NoSuchAlgorithmException e) {
-            throw new IOException("MD5 algorithm not found", e);
-        }
-    }
-
-    // Overload voor InputStream
-    private String calculateChecksum(InputStream inputStream) throws IOException {
-        try {
-            MessageDigest md = MessageDigest.getInstance("MD5");
-            byte[] buffer = new byte[1024];
-            int bytesRead;
-            while ((bytesRead = inputStream.read(buffer)) != -1) {
-                md.update(buffer, 0, bytesRead);
-            }
-            byte[] digest = md.digest();
-            StringBuilder sb = new StringBuilder();
-            for (byte b : digest) {
-                sb.append(String.format("%02x", b));
-            }
-            return sb.toString();
-        } catch (NoSuchAlgorithmException e) {
-            throw new IOException("MD5 algorithm not found", e);
-        }
-    }
-
-    // Publieke helper voor het berekenen van een MD5-checksum van een bytearray
     public String calculateChecksum(byte[] data) {
         try {
             MessageDigest md = MessageDigest.getInstance("MD5");
@@ -320,271 +115,24 @@ public class FileManagerService {
         }
     }
 
-    /**
-     * Automatische synchronisatie: Lees de "clientSync" map (simuleert de lokale client-bestanden),
-     * bereken metadata voor elk bestand en roep de bestaande syncFiles-methode aan.
-     */
-    public SyncResult syncLocalClientFiles() {
-        // Zorg dat de clientSync map bestaat (wordt al aangemaakt in de constructor)
-        List<FileMetadata> clientFiles = new ArrayList<>();
-        try (Stream<Path> stream = Files.list(clientLocalLocation)) {
-            stream.filter(Files::isRegularFile)
-                    .forEach(path -> {
+    private void deleteChunks(String baseName) throws IOException {
+        try (Stream<Path> stream = Files.list(storageLocation)) {
+            stream.filter(p -> p.getFileName().toString().startsWith(baseName + ".part"))
+                    .forEach(p -> {
                         try {
-                            FileMetadata meta = new FileMetadata();
-                            meta.setFileName(path.getFileName().toString());
-                            meta.setFileSize(Files.size(path));
-                            meta.setChecksum(calculateChecksum(path));
-                            meta.setUploadDate(LocalDateTime.now());
-                            clientFiles.add(meta);
-                        } catch (IOException e) {
-                            logger.error("Error reading client file {}", path.getFileName());
-                        }
+                            Files.deleteIfExists(p);
+                        } catch (IOException ignored) { }
                     });
-        } catch (IOException e) {
-            throw new FileStorageException("Error reading client local sync directory", e);
         }
-        return syncFiles(clientFiles);
     }
 
-    public CompletableFuture<SyncResult> syncLocalClientFilesAsync() {
-        SyncResult result = syncLocalClientFiles();
-        return CompletableFuture.completedFuture(result);
-    }
-
-            String normalizedFileName = Paths.get(originalFileName).getFileName().toString(); // Normalize
-
-        Path tempPath = storageLocation.resolve(normalizedFileName + ".tmp");
-        Path finalPath = storageLocation.resolve(normalizedFileName);
-
-        try (InputStream in = file.getInputStream()) {
-            Files.copy(in, tempPath, StandardCopyOption.REPLACE_EXISTING);
-            String actualChecksum = calculateChecksum(tempPath);
-
-            if (!actualChecksum.equalsIgnoreCase(expectedChecksum)) {
-                Files.deleteIfExists(tempPath);
-                throw new FileStorageException("Checksum mismatch for file " + normalizedFileName);
-            }
-            Files.move(tempPath, finalPath, StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException e) {
+    private int extractChunkIndex(String chunkName, String base) {
+        String prefix = base + ".part";
+        if (chunkName.startsWith(prefix)) {
             try {
-                Files.deleteIfExists(tempPath);
-            } catch (IOException ignored) {
-                logger.error("Failed to delete temp file {} during transactional save error handling.", tempPath);
-            }
-            throw new FileStorageException("Failed transactional save for " + normalizedFileName, e);
+                return Integer.parseInt(chunkName.substring(prefix.length()));
+            } catch (NumberFormatException ignored) { }
         }
-    }
-
-    
-            }
-        throw new FileStorageException("Failed to upload file '" + fileName + "' after retries.", e);
-    }
-
-    
-            throw new FileStorageException("Failed to upload chunk " + chunkIndex + " of '" + fileName + "'", e);
-    }
-
-            String normalized = Paths.get(originalFileName).getFileName().toString();
-        try {
-            if (chunkChecksum != null) {
-                try (InputStream in = chunk.getInputStream()) {
-                    String actual = calculateChecksum(in);
-                    if (!actual.equalsIgnoreCase(chunkChecksum)) {
-                        throw new FileStorageException("Checksum mismatch for chunk " + index + " of " + normalized);
-                    }
-                }
-            }
-
-            Path chunkPath = storageLocation.resolve(normalized + ".part" + index);
-            try (InputStream in = chunk.getInputStream()) {
-                Files.copy(in, chunkPath, StandardCopyOption.REPLACE_EXISTING);
-            }
-
-            if (index == total) {
-                assembleChunks(normalized, total, finalChecksum);
-            }
-        } catch (IOException e) {
-            throw new FileStorageException("Error saving chunk " + index + " of " + normalized, e);
-        }
-    }
-
-    private void assembleChunks(String fileName, int total, String expectedChecksum) throws IOException {
-        Path finalPath = storageLocation.resolve(fileName);
-        try (OutputStream out = Files.newOutputStream(finalPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
-            for (int i = 1; i <= total; i++) {
-                Path part = storageLocation.resolve(fileName + ".part" + i);
-                Files.copy(part, out);
-            }
-        }
-
-        if (expectedChecksum != null) {
-            String actual = calculateChecksum(finalPath);
-            if (!actual.equalsIgnoreCase(expectedChecksum)) {
-                Files.deleteIfExists(finalPath);
-                throw new FileStorageException("Final checksum mismatch for " + fileName);
-            }
-        }
-
-        for (int i = 1; i <= total; i++) {
-            Files.deleteIfExists(storageLocation.resolve(fileName + ".part" + i));
-        }
-    }
-
-    public SyncResult analyzeLocalClientDifferences() {
-        List<FileMetadata> clientLocalFilesMetadata = new ArrayList<>();
-        try (Stream<Path> stream = Files.list(clientLocalLocation)) {
-            stream.filter(Files::isRegularFile)
-                  .filter(path -> !path.getFileName().toString().contains(".part"))
-                  .forEach(path -> {
-                try {
-                    String fileName = path.getFileName().toString();
-                    long fileSize = Files.size(path);
-                    String checksum = calculateChecksum(path);
-                    LocalDateTime fileTime = LocalDateTime.ofInstant(Files.getLastModifiedTime(path).toInstant(), ZoneId.systemDefault());
-                    long lastMod = Files.getLastModifiedTime(path).toMillis();
-                    
-                    FileMetadata meta = new FileMetadata(fileName, checksum, fileSize, fileTime, lastMod);
-                    clientLocalFilesMetadata.add(meta);
-                } catch (IOException e) {
-                    logger.error("Error generating metadata for client file '{}': {}", path.getFileName(), e.getMessage());
-                }
-            });
-        } catch (IOException e) {
-            throw new FileStorageException("Error reading client local sync directory for analysis", e);
-        }
-        // Compare this clientLocalFilesMetadata with the server's master storage
-        return syncFiles(clientLocalFilesMetadata);
-    }
-
-    public CompletableFuture<SyncResult> performServerSideLocalSyncAsync() { // Changed to call the new method
-        SyncResult result = performServerSideLocalSync();
-        return CompletableFuture.completedFuture(result);
-    }
-
-    /**
-     * Generates a map of FileMetadata for all regular files in a given directory.
-     * Skips .part files.
-     * @param directoryPath The path to the directory to scan.
-     * @return A map where keys are file names and values are their FileMetadata.
-     */
-    private Map<String, FileMetadata> getDirectoryMetadata(Path directoryPath) {
-        Map<String, FileMetadata> metadataMap = new HashMap<>();
-        if (!Files.exists(directoryPath) || !Files.isDirectory(directoryPath)) {
-            logger.error("Metadata Scan: Directory does not exist or is not a directory: {}", directoryPath);
-            return metadataMap;
-        }
-        try (Stream<Path> stream = Files.list(directoryPath)) {
-            stream.filter(Files::isRegularFile)
-                  .filter(path -> !path.getFileName().toString().contains(".part")) // Skip chunk files
-                  .forEach(filePath -> {
-                try {
-                    String name = filePath.getFileName().toString();
-                    long lastModMillis = Files.getLastModifiedTime(filePath).toMillis();
-                    String checksum = calculateChecksum(filePath);
-                    long fileSize = Files.size(filePath);
-                    LocalDateTime fileTimestamp = LocalDateTime.ofInstant(
-                            Files.getLastModifiedTime(filePath).toInstant(), ZoneId.systemDefault()
-                    );
-
-                    // Using the full constructor for FileMetadata
-                    FileMetadata meta = new FileMetadata(name, checksum, fileSize, fileTimestamp, lastModMillis);
-                    metadataMap.put(name, meta);
-                } catch (IOException e) {
-                    logger.error("Error generating metadata for file '{}' in directory '{}': {}",
-                            filePath.getFileName(), directoryPath, e.getMessage());
-                }
-            });
-        } catch (IOException e) {
-            logger.error("Error listing directory '{}': {}", directoryPath, e.getMessage());
-        }
-        return metadataMap;
-    }
-
-    /**
-     * Performs a server-side synchronization between the primary storageLocation (master)
-     * and the clientLocalLocation (local mirror).
-     * It copies files as needed to make clientLocalLocation a reflection of storageLocation,
-     * and vice-versa, based on file differences.
-     *
-     * @return SyncResult summarizing the operations performed.
-     */
-    public SyncResult performServerSideLocalSync() {
-        logger.info("Performing server-side local sync...");
-        Map<String, FileMetadata> clientSyncFilesMetadata = getDirectoryMetadata(this.clientLocalLocation);
-        Map<String, FileMetadata> serverMasterFilesMetadata = getDirectoryMetadata(this.storageLocation);
-
-        Set<String> allFileNames = new HashSet<>();
-        allFileNames.addAll(clientSyncFilesMetadata.keySet());
-        allFileNames.addAll(serverMasterFilesMetadata.keySet());
-
-        List<String> filesToCopyToClientLocal = new ArrayList<>();
-        List<String> filesToCopyToServerMaster = new ArrayList<>();
-        List<String> conflictFiles = new ArrayList<>();
-
-        for (String name : allFileNames) {
-            FileMetadata clientMeta = clientSyncFilesMetadata.get(name);
-            FileMetadata serverMeta = serverMasterFilesMetadata.get(name);
-
-            if (serverMeta == null) {
-                if (clientMeta != null) {
-                    filesToCopyToServerMaster.add(name);
-                }
-                continue;
-            }
-            if (clientMeta == null) {
-                filesToCopyToClientLocal.add(name);
-                continue;
-            }
-
-            // File exists in both locations, compare them
-            // Ensure checksums are not null before comparing
-            if (clientMeta.getChecksum() != null && serverMeta.getChecksum() != null &&
-                clientMeta.getChecksum().equals(serverMeta.getChecksum())) {
-                continue;
-            }
-
-            if (clientMeta.getLastModified() > serverMeta.getLastModified()) {
-                filesToCopyToServerMaster.add(name);
-            } else if (serverMeta.getLastModified() > clientMeta.getLastModified()) {
-                filesToCopyToClientLocal.add(name);
-            } else {
-                conflictFiles.add(name);
-            }
-        }
-
-        // --- Perform actual file copy operations ---
-        List<String> successfullyCopiedToClient = new ArrayList<>();
-        for (String fileName : filesToCopyToClientLocal) {
-            try {
-                Path sourcePath = storageLocation.resolve(fileName);
-                Path destinationPath = clientLocalLocation.resolve(fileName);
-                Files.copy(sourcePath, destinationPath, StandardCopyOption.REPLACE_EXISTING);
-                successfullyCopiedToClient.add(fileName);
-                logger.info("SYNC: Copied '{}' from MASTER_STORAGE to CLIENT_SYNC_DIR.", fileName);
-            } catch (IOException e) {
-                logger.error("SYNC: FAILED to copy '{}' to CLIENT_SYNC_DIR: {}", fileName, e.getMessage());
-                conflictFiles.add(fileName + " (copy to clientSync failed)"); // Add to conflicts if copy fails
-            }
-        }
-
-        List<String> successfullyCopiedToServer = new ArrayList<>();
-        for (String fileName : filesToCopyToServerMaster) {
-            try {
-                Path sourcePath = clientLocalLocation.resolve(fileName);
-                Path destinationPath = storageLocation.resolve(fileName);
-                Files.copy(sourcePath, destinationPath, StandardCopyOption.REPLACE_EXISTING);
-                successfullyCopiedToServer.add(fileName);
-                logger.info("SYNC: Copied '{}' from CLIENT_SYNC_DIR to MASTER_STORAGE.", fileName);
-            } catch (IOException e) {
-                logger.error("SYNC: FAILED to copy '{}' to MASTER_STORAGE: {}", fileName, e.getMessage());
-                conflictFiles.add(fileName + " (copy to serverStorage failed)"); // Add to conflicts
-            }
-        }
-
-        logger.info("Server-side local sync completed. Copied to client: {}, Copied to server: {}, Conflicts: {}",
-                successfullyCopiedToClient.size(), successfullyCopiedToServer.size(), conflictFiles.size());
-
-        return new SyncResult(successfullyCopiedToServer, successfullyCopiedToClient, conflictFiles);
+        return Integer.MAX_VALUE;
     }
 }

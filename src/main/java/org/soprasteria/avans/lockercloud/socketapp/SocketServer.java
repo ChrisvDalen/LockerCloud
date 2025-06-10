@@ -15,7 +15,7 @@ public class SocketServer {
 
     public SocketServer(Config config) {
         this.config = config;
-        this.service = new FileManagerService(config.getStoragePath(), config.getStoragePath().resolve("clientSync"));
+        this.service = new FileManagerService(config.getStoragePath());
     }
 
     public void start() throws IOException {
