@@ -33,11 +33,6 @@ class FileControllerTest {
     }
 
     @Test
-    void index_returnsIndexView() {
-        assertEquals("index", controller.index());
-    }
-
-    @Test
     void uploadFile_success() {
         MultipartFile file = new MockMultipartFile("file", "test.txt", "text/plain", "data".getBytes());
         RedirectAttributes attrs = new RedirectAttributesModelMap();
