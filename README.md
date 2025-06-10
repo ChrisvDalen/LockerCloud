@@ -46,4 +46,18 @@ LIST\n
 
 Responses are plain text or raw bytes. The server uses the same `keystore.p12` for TLS encryption.
 
-YourPasswordHere = password;
+
+## CLI Usage
+
+After building the project you can execute simple file operations over the socket server using the bundled client:
+
+```bash
+java -cp target/LockerCloud-0.0.1-SNAPSHOT.jar \
+  org.soprasteria.avans.lockercloud.client.SocketClient list
+java -cp target/LockerCloud-0.0.1-SNAPSHOT.jar \
+  org.soprasteria.avans.lockercloud.client.SocketClient upload /path/to/file
+java -cp target/LockerCloud-0.0.1-SNAPSHOT.jar \
+  org.soprasteria.avans.lockercloud.client.SocketClient download file.txt /tmp/file.txt
+```
+
+The client communicates directly with the `SSLFileServer` using the protocol described in `PROTOCOL.md`.
