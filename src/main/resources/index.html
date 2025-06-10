@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>LockerCloud</title>
+</head>
+<body>
+<h1>LockerCloud</h1>
+<p>This application communicates over a raw TLS socket. Use the command line client to upload or download files.</p>
+<pre>
+java -cp LockerCloud-0.0.1-SNAPSHOT.jar \
+  org.soprasteria.avans.lockercloud.client.SocketClient upload path/to/file
+java -cp LockerCloud-0.0.1-SNAPSHOT.jar \
+  org.soprasteria.avans.lockercloud.client.SocketClient download file.txt /tmp/file.txt
+</pre>
+</body>
+</html>

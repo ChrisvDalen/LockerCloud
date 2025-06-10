@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class SocketServerRunner implements CommandLineRunner {
 
-    @Value("${socket.port:9000}")
+    @Value("${socket.port:8443}")
     private int port;
 
     @Value("${server.ssl.key-store}")

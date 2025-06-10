@@ -134,7 +134,14 @@ public class SSLFileServer implements Runnable {
     }
 
     private void handleGet(String target, DataOutputStream out) throws IOException {
-        if (target.startsWith("/download")) {
+        if ("/".equals(target) || "/index.html".equals(target)) {
+            String page = loadIndexPage();
+            byte[] data = page.getBytes();
+            out.writeBytes("HTTP/1.1 200 OK\r\n");
+            out.writeBytes("Content-Type: text/html; charset=UTF-8\r\n");
+            out.writeBytes("Content-Length: " + data.length + "\r\n\r\n");
+            out.write(data);
+        } else if (target.startsWith("/download")) {
             int idx = target.indexOf("file=");
             if (idx == -1) {
                 out.writeBytes("HTTP/1.1 400 Bad Request\r\n\r\n");
@@ -164,6 +171,17 @@ public class SSLFileServer implements Runnable {
             out.writeBytes("HTTP/1.1 200 OK\r\n\r\n");
         } else {
             out.writeBytes("HTTP/1.1 400 Bad Request\r\n\r\n");
+        }
+    }
+
+    private String loadIndexPage() {
+        try (InputStream is = getClass().getClassLoader().getResourceAsStream("index.html")) {
+            if (is == null) {
+                return "<html><body><h1>LockerCloud</h1>Use the SocketClient to perform file operations.</body></html>";
+            }
+            return new String(is.readAllBytes());
+        } catch (IOException e) {
+            return "<html><body><h1>LockerCloud</h1>Error loading index.</body></html>";
         }
     }
 }

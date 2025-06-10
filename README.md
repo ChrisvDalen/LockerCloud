@@ -35,7 +35,7 @@ The compose file mounts `keystore.p12` into the container at startup. Ensure the
 file is present in the project root (or adjust `SSL_KEYSTORE` accordingly).
 ## SSL Socket Server
 
-The application also starts an SSL socket server on port `9000` at runtime. This server exposes simple commands for file upload, download, listing and deletion without using HTTP. Each connection accepts a single command in the form:
+The application starts an SSL socket server on port `8443` at runtime. This server exposes simple commands for file upload, download, listing and deletion without using HTTP. Each connection accepts a single command in the form:
 
 ```
 UPLOAD <filename> <length>\n<bytes...>
@@ -49,7 +49,7 @@ Responses are plain text or raw bytes. The server uses the same `keystore.p12` f
 
 ## CLI Usage
 
-After building the project you can execute simple file operations over the socket server using the bundled client:
+The web interface has been removed. Open <https://localhost:8443/> in a browser to see basic instructions, then use the command line client for all file operations:
 
 ```bash
 java -cp target/LockerCloud-0.0.1-SNAPSHOT.jar \
