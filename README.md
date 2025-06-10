@@ -57,5 +57,6 @@ to verify that commands were received.
 HTTP controllers are **disabled** unless the `http` Spring profile is active.
 If you want to use the web interface or REST API, set the environment variable
 `SPRING_PROFILES_ACTIVE` to include `http` (for example `prod,http`). The
-provided `docker-compose.yml` sets this variable to `prod` only, so by default
-the socket server is the only available interface.
+provided `docker-compose.yml` enables the web interface by default using
+`SPRING_PROFILES_ACTIVE=prod,http`. Set it to `prod` only if you want to run
+exclusively over the socket server.
