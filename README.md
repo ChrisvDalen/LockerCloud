@@ -33,9 +33,13 @@ podman compose up --build
 ```
 The compose file mounts `keystore.p12` into the container at startup. Ensure the
 file is present in the project root (or adjust `SSL_KEYSTORE` accordingly).
+
 ## SSL Socket Server
 
-The application also starts an SSL socket server on port `9000` at runtime. This server exposes simple commands for file upload, download, listing and deletion without using HTTP. Each connection accepts a single command in the form:
+All file operations are performed over a raw SSL socket on port `9000`. The
+server implements the commands described in [PROTOCOL.md](PROTOCOL.md). Connect
+using `openssl s_client` or any SSL capable socket library and send one of the
+following commands:
 
 ```
 UPLOAD <filename> <length>\n<bytes...>
@@ -44,6 +48,6 @@ DELETE <filename>\n
 LIST\n
 ```
 
-Responses are plain text or raw bytes. The server uses the same `keystore.p12` for TLS encryption.
-
-YourPasswordHere = password;
+The server responds with `OK` or the requested data. Enable application logging
+to verify that commands were received. HTTP endpoints are disabled by default;
+set `spring.profiles.active=http` if you wish to use the legacy MVC layer.

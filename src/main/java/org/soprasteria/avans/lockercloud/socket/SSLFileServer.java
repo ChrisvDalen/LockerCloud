@@ -1,6 +1,8 @@
 package org.soprasteria.avans.lockercloud.socket;
 
 import org.soprasteria.avans.lockercloud.service.FileManagerService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.net.ssl.*;
 import java.io.*;
@@ -18,6 +20,7 @@ public class SSLFileServer implements Runnable {
     private final FileManagerService fileService;
     private final String keyStorePath;
     private final String keyStorePassword;
+    private static final Logger logger = LoggerFactory.getLogger(SSLFileServer.class);
 
     public SSLFileServer(int port, FileManagerService fileService,
                          String keyStorePath, String keyStorePassword) {
@@ -63,6 +66,7 @@ public class SSLFileServer implements Runnable {
              DataOutputStream out = new DataOutputStream(socket.getOutputStream())) {
             String cmd = readLine(in);
             if (cmd == null) return;
+            logger.info("Received command: {}", cmd);
             String[] parts = cmd.split(" ");
             switch (parts[0].toUpperCase()) {
                 case "UPLOAD":
@@ -82,7 +86,7 @@ public class SSLFileServer implements Runnable {
             }
             out.flush();
         } catch (IOException e) {
-            // ignore, connection closed
+            logger.error("Socket error: {}", e.getMessage());
         }
     }
 
@@ -97,6 +101,7 @@ public class SSLFileServer implements Runnable {
         in.readFully(data);
         try (InputStream dataIn = new ByteArrayInputStream(data)) {
             fileService.saveStream(name, dataIn);
+            logger.info("Uploaded {} ({} bytes)", name, len);
         }
         out.writeBytes("OK\n");
     }
@@ -110,6 +115,7 @@ public class SSLFileServer implements Runnable {
         byte[] data = fileService.getFile(name);
         out.writeBytes(data.length + "\n");
         out.write(data);
+        logger.info("Downloaded {} ({} bytes)", name, data.length);
     }
 
     private void handleDelete(String[] parts, DataOutputStream out) throws IOException {
@@ -118,6 +124,7 @@ public class SSLFileServer implements Runnable {
             return;
         }
         fileService.deleteFile(parts[1]);
+        logger.info("Deleted {}", parts[1]);
         out.writeBytes("OK\n");
     }
 
@@ -127,6 +134,7 @@ public class SSLFileServer implements Runnable {
             out.writeBytes(f + "\n");
         }
         out.writeBytes("END\n");
+        logger.info("Listed {} files", files.size());
     }
 
     private String readLine(DataInputStream in) throws IOException {

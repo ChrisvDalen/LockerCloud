@@ -30,11 +30,9 @@ public class FileManagerService {
 
     // Voor grote bestanden groter dan 4GB wordt chunking toegepast
     private static final long CHUNK_THRESHOLD = 4L * 1024 * 1024 * 1024; // 4 GB
-    private static final long CHUNK_SIZE = 10 * 1024 * 1024; // 10 MB
+    private static final long CHUNK_SIZE = 10L * 1024 * 1024; // 10 MB
     private static final Logger logger = LoggerFactory.getLogger(FileManagerService.class);
     // Bestanden groter dan 4GB moeten in chunks worden verwerkt volgens het protocol
-    private static final long CHUNK_THRESHOLD = 4L * 1024 * 1024 * 1024; // 4 GB
-    private static final long CHUNK_SIZE = 10L * 1024 * 1024; // 10 MB
     private static final long MOD_TIME_THRESHOLD_MS = 1000L;
 
     private final Path storageLocation = Paths.get("filestorage");
@@ -339,6 +337,18 @@ public class FileManagerService {
         } catch (NoSuchAlgorithmException e) {
             throw new IOException("MD5 algorithm not found", e);
         }
+    }
+
+    /**
+     * Utility method to convert a byte array into a hexadecimal string.
+     * This mirrors the helper used in {@link org.soprasteria.avans.lockercloud.controller.FileController}.
+     */
+    private String bytesToHex(byte[] digest) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : digest) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
     }
 
     // Overload voor InputStream
