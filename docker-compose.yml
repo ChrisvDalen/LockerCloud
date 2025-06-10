@@ -5,9 +5,6 @@ services:
       dockerfile: Dockerfile
     container_name: lockercloud_app
     ports:
-      - "8443:8443"
-    environment:
-      - SPRING_PROFILES_ACTIVE=prod
+      - "9000:9000"
     volumes:
       - ./filestorage:/app/filestorage
-      - ./keystore.p12:/app/keystore.p12:ro
