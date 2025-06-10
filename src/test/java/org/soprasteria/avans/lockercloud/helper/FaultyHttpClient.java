@@ -48,11 +48,24 @@ public class FaultyHttpClient extends HttpClient {
         return delegate.sendAsync(request, responseBodyHandler);
     }
 
+    @Override
+    public <T> CompletableFuture<HttpResponse<T>> sendAsync(HttpRequest request,
+            HttpResponse.BodyHandler<T> responseBodyHandler,
+            HttpResponse.PushPromiseHandler<T> pushPromiseHandler) {
+        if (remainingFails.getAndDecrement() > 0) {
+            CompletableFuture<HttpResponse<T>> cf = new CompletableFuture<>();
+            cf.completeExceptionally(new IOException("Simulated network reset"));
+            return cf;
+        }
+        return delegate.sendAsync(request, responseBodyHandler, pushPromiseHandler);
+    }
+
     // Delegate the remaining methods
     @Override public Optional<CookieHandler> cookieHandler() { return delegate.cookieHandler(); }
     @Override public Optional<Duration> connectTimeout() { return delegate.connectTimeout(); }
     @Override public Redirect followRedirects() { return delegate.followRedirects(); }
-    @Override public ProxySelector proxy() { return delegate.proxy(); }
+    @Override
+    public Optional<ProxySelector> proxy() { return delegate.proxy(); }
     @Override public SSLContext sslContext() { return delegate.sslContext(); }
     @Override public SSLParameters sslParameters() { return delegate.sslParameters(); }
     @Override public Optional<Authenticator> authenticator() { return delegate.authenticator(); }

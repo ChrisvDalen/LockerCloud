@@ -48,7 +48,7 @@ class NetworkFaultIntegrationTest {
                 1,
                 3); // drop after 3 bytes on first attempt
 
-        service.saveFileWithRetry(file);
+        service.saveFileWithRetry(file, null);
 
         assertEquals(2, file.getAttemptCount(), "Should retry once");
         Path target = storageDir.resolve("net.txt");
@@ -81,7 +81,7 @@ class NetworkFaultIntegrationTest {
                 2,
                 chunkSize / 2); // fail twice
 
-        service.saveFileWithRetry(file);
+        service.saveFileWithRetry(file, null);
 
         assertEquals(3, file.getAttemptCount());
         Path target = storageDir.resolve("big.bin");
@@ -102,7 +102,7 @@ class NetworkFaultIntegrationTest {
             String name = Thread.currentThread().getName() + ".txt";
             Supplier<InputStream> sup = () -> new java.io.ByteArrayInputStream(data);
             FaultyMultipartFile f = new FaultyMultipartFile("f", name, "text/plain", sup, data.length, 1, 2);
-            service.saveFileWithRetry(f);
+            service.saveFileWithRetry(f, null);
             return null;
         };
 
