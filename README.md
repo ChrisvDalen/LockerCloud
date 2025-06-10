@@ -4,19 +4,20 @@ LockerCloud is a small file sharing server implemented with plain Java sockets. 
 
 ## Building
 
-Compile the sources with `javac` and place the class files in a directory of your choice. For example:
+The project is now a plain Maven module. Run `mvn clean package` to build a runnable JAR:
 
 ```bash
-mkdir -p out
-javac -d out $(find src/main/java -name "*.java")
+mvn clean package
 ```
+
+The jar `target/LockerCloud-0.0.1-SNAPSHOT.jar` contains all classes and can be executed directly.
 
 ## Running the server
 
 Create a `config.properties` file (one is provided) to configure the port, storage path and optional authentication token and AES key. Start the server with:
 
 ```bash
-java -cp out org.soprasteria.avans.lockercloud.socketapp.SocketServer config.properties
+java -jar target/LockerCloud-0.0.1-SNAPSHOT.jar config.properties
 ```
 
 Uploaded files are stored in the directory specified by `storagePath`.
@@ -26,7 +27,7 @@ Uploaded files are stored in the directory specified by `storagePath`.
 The simple `SocketClient` class can be used to upload or download files. It expects the host, port, token and AES key from the configuration file. Example:
 
 ```bash
-java -cp out org.soprasteria.avans.lockercloud.socketapp.SocketClient
+java -cp target/LockerCloud-0.0.1-SNAPSHOT.jar org.soprasteria.avans.lockercloud.socketapp.SocketClient
 ```
 
 Edit the client code to call `upload()` or `download()` as needed.
