@@ -52,5 +52,10 @@ LIST\n
 ```
 
 The server responds with `OK` or the requested data. Enable application logging
-to verify that commands were received. HTTP endpoints are disabled by default;
-set `spring.profiles.active=http` if you wish to use the legacy MVC layer.
+to verify that commands were received.
+
+HTTP controllers are **disabled** unless the `http` Spring profile is active.
+If you want to use the web interface or REST API, set the environment variable
+`SPRING_PROFILES_ACTIVE` to include `http` (for example `prod,http`). The
+provided `docker-compose.yml` sets this variable to `prod` only, so by default
+the socket server is the only available interface.
