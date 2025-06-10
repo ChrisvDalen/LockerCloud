@@ -8,8 +8,8 @@ services:
       - "8443:8443"
       - "9000:9000"
     environment:
-      # Include the 'http' profile if you want to enable the web interface
-      - SPRING_PROFILES_ACTIVE=prod,http
+      # HTTP controllers are disabled by default; add 'http' to enable them
+      - SPRING_PROFILES_ACTIVE=prod
       - KEYSTORE_PASSWORD=changeit
     volumes:
       - ./filestorage:/app/filestorage
