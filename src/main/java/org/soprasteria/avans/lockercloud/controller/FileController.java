@@ -69,7 +69,8 @@ public class FileController {
             } else if (checksum != null && !checksum.isBlank()) {
                 fileManagerService.saveFileTransactionalWithRetry(file, checksum);
             } else {
-                fileManagerService.saveFileWithRetry(file);
+                // Call overload with expectedChecksum=null when no checksum header provided
+                fileManagerService.saveFileWithRetry(file, null);
             }
             redirectAttributes.addFlashAttribute(
               "uploadSuccess",
