@@ -6,6 +6,7 @@ services:
     container_name: lockercloud_app
     ports:
       - "8443:8443"
+      - "8444:8444"
     environment:
       - SPRING_PROFILES_ACTIVE=prod
     volumes:

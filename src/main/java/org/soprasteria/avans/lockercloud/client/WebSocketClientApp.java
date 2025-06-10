@@ -21,7 +21,7 @@ import java.util.concurrent.TimeUnit;
  */
 public class WebSocketClientApp {
     private static final String HOST = System.getProperty("server.host", "localhost");
-    private static final int PORT = Integer.getInteger("socket.port", 8443);
+    private static final int PORT = Integer.getInteger("socket.port", 8444);
     private static final String KEYSTORE = System.getProperty("client.keystore", "keystore.p12");
     private static final String PASSWORD = System.getProperty("client.keystorePassword", "YourPasswordHere");
     private static final ObjectMapper mapper = new ObjectMapper();

@@ -2,16 +2,60 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>LockerCloud</title>
+    <title>LockerCloud Web Interface</title>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        #fileList li { margin-bottom: 4px; }
+    </style>
 </head>
 <body>
 <h1>LockerCloud</h1>
-<p>This application communicates over a raw TLS socket. Use the command line client to upload or download files.</p>
-<pre>
-java -cp LockerCloud-0.0.1-SNAPSHOT.jar \
-  org.soprasteria.avans.lockercloud.client.SocketClient upload path/to/file
-java -cp LockerCloud-0.0.1-SNAPSHOT.jar \
-  org.soprasteria.avans.lockercloud.client.SocketClient download file.txt /tmp/file.txt
-</pre>
+<input type="file" id="uploadInput" />
+<button id="refreshBtn">Refresh</button>
+<ul id="fileList"></ul>
+<script>
+const wsPort = 8444;
+const protocol = location.protocol === 'https:' ? 'wss://' : 'ws://';
+const ws = new WebSocket(protocol + location.hostname + ':' + wsPort);
+ws.onopen = () => listFiles();
+ws.onmessage = ev => handleMessage(JSON.parse(ev.data));
+function listFiles() { ws.send(JSON.stringify({command:'list'})); }
+function uploadFile(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    const arr = new Uint8Array(reader.result);
+    let binary = '';
+    arr.forEach(b => binary += String.fromCharCode(b));
+    const b64 = btoa(binary);
+    ws.send(JSON.stringify({command:'upload', file:file.name, data:b64}));
+  };
+  reader.readAsArrayBuffer(file);
+}
+function downloadFile(name) { ws.send(JSON.stringify({command:'download', file:name})); }
+function deleteFile(name) { ws.send(JSON.stringify({command:'delete', file:name})); }
+function handleMessage(msg) {
+  if(msg.files) renderList(msg.files);
+  if(msg.file && msg.data) {
+    const link = document.createElement('a');
+    link.href = 'data:application/octet-stream;base64,' + msg.data;
+    link.download = msg.file;
+    link.click();
+  }
+}
+function renderList(files) {
+  const ul = document.getElementById('fileList');
+  ul.innerHTML = '';
+  files.forEach(name => {
+    const li = document.createElement('li');
+    li.textContent = name + ' ';
+    const dl = document.createElement('button'); dl.textContent = 'Download'; dl.onclick=()=>downloadFile(name);
+    const del = document.createElement('button'); del.textContent = 'Delete'; del.onclick=()=>deleteFile(name);
+    li.appendChild(dl); li.appendChild(del);
+    ul.appendChild(li);
+  });
+}
+document.getElementById('uploadInput').addEventListener('change', e => { if(e.target.files[0]) uploadFile(e.target.files[0]); });
+document.getElementById('refreshBtn').addEventListener('click', listFiles);
+</script>
 </body>
 </html>

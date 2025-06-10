@@ -11,3 +11,4 @@
 | **RQ-07** | Herstel bij netwerkfouten (retries) | Retry annotations in `FileManagerService` | `NetworkFaultIntegrationTest` |
 | **RQ-08** | Meerdere gelijktijdige clients | `SslSyncServer` uses `ExecutorService` | `ConcurrencyFileAccessTest`, `SslSyncServerTest` |
 | **RQ-09** | Beveiligde communicatie via SSL/TLS | `WebSocketFileServer` and `SslSyncServer` create `SSLContext` | `SslSyncServerTest` |
+| **RQ-10** | Webinterface over WebSocket | `StaticFileServer` serveert `index.html` dat via JS met `WebSocketFileServer` praat | (handmatige test) |

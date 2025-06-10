@@ -9,9 +9,9 @@ The application exposes HTTPS on port `8443`. Provide a PKCS#12 keystore named
 variable to its location) before running the application. The relevant
 configuration is in `src/main/resources/application.properties`.
 
-When running in Docker, the container also exposes port `8443` for secure
-connections. WebSocket connections should use the `wss://` protocol when the
-server is accessed via HTTPS.
+When running in Docker, the container also exposes port `8443` for the web
+interface and port `8444` for the secure WebSocket endpoint. WebSocket
+connections should use the `wss://` protocol.
 
 ### Generating a certificate
 
@@ -35,7 +35,7 @@ The compose file mounts `keystore.p12` into the container at startup. Ensure the
 file is present in the project root (or adjust `SSL_KEYSTORE` accordingly).
 ## WebSocket Server
 
-The application now exposes a secure WebSocket server on port `8443`. Clients communicate using JSON messages over `wss://`:
+The application exposes the WebSocket endpoint on port `8444`. Clients communicate using JSON messages over `wss://`:
 
 ```
 {"command":"list"}
@@ -47,9 +47,10 @@ The application now exposes a secure WebSocket server on port `8443`. Clients co
 Responses are JSON as well (for downloads the file data is Base64 encoded). The server uses the same `keystore.p12` for TLS encryption.
 
 
-## CLI Usage
+## Web Interface & CLI Usage
 
-The web interface has been removed. Open <https://localhost:8443/> in a browser to see basic instructions, then use the WebSocket command line client for all file operations:
+Open <https://localhost:8443/> in a browser to use the WebSocket based interface. It connects to the WebSocket endpoint on port `8444`.
+You can also use the WebSocket command line client for file operations:
 
 ```bash
 java -cp target/LockerCloud-0.0.1-SNAPSHOT.jar \
