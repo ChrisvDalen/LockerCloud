@@ -9,9 +9,10 @@ The application exposes HTTPS on port `8443`. Provide a PKCS#12 keystore named
 variable to its location) before running the application. The relevant
 configuration is in `src/main/resources/application.properties`.
 
-When running in Docker, the container also exposes port `8443` for secure
-connections. WebSocket connections should use the `wss://` protocol when the
-server is accessed via HTTPS.
+When running in Docker, the container exposes ports `8443` (HTTPS) and `9000`
+for the socket server. WebSocket connections should use the `wss://` protocol
+when the server is accessed via HTTPS. Set the `KEYSTORE_PASSWORD` environment
+variable to the keystore's password.
 
 ### Generating a certificate
 
@@ -31,8 +32,10 @@ After creating the keystore, build the project and start the container
 mvn clean package
 podman compose up --build
 ```
-The compose file mounts `keystore.p12` into the container at startup. Ensure the
-file is present in the project root (or adjust `SSL_KEYSTORE` accordingly).
+The compose file mounts `keystore.p12` into the container at startup. It exposes
+ports `8443` and `9000` and expects the environment variable
+`KEYSTORE_PASSWORD` to match the keystore password. Ensure the file is present
+in the project root (or adjust `SSL_KEYSTORE` accordingly).
 
 ## SSL Socket Server
 

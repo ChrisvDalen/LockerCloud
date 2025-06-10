@@ -17,6 +17,7 @@ import java.util.List;
 public class SSLFileServer implements Runnable {
 
     private final int port;
+    private volatile int boundPort = -1;
     private final FileManagerService fileService;
     private final String keyStorePath;
     private final String keyStorePassword;
@@ -36,6 +37,7 @@ public class SSLFileServer implements Runnable {
             SSLContext ctx = createContext();
             SSLServerSocketFactory factory = ctx.getServerSocketFactory();
             try (SSLServerSocket serverSocket = (SSLServerSocket) factory.createServerSocket(port)) {
+                boundPort = serverSocket.getLocalPort();
                 while (true) {
                     SSLSocket socket = (SSLSocket) serverSocket.accept();
                     handle(socket);
@@ -44,6 +46,10 @@ public class SSLFileServer implements Runnable {
         } catch (Exception e) {
             throw new RuntimeException("SSL socket server failed", e);
         }
+    }
+
+    public int getPort() {
+        return boundPort;
     }
 
     private SSLContext createContext() throws Exception {

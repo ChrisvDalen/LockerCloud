@@ -45,8 +45,7 @@ public class SSLFileServerIntegrationTest {
 
         // wait for server socket to open
         Thread.sleep(500);
-        int port = service.listFiles().size(); // dummy to load class
-        port = getServerPort(server); // reflection trick
+        int port = server.getPort();
 
         SSLSocketFactory factory = (SSLSocketFactory) SSLSocketFactory.getDefault();
         try (SSLSocket socket = (SSLSocket) factory.createSocket("localhost", port);
@@ -99,9 +98,4 @@ public class SSLFileServerIntegrationTest {
         return baos.toString("UTF-8");
     }
 
-    private int getServerPort(SSLFileServer server) throws Exception {
-        java.lang.reflect.Field portField = SSLFileServer.class.getDeclaredField("port");
-        portField.setAccessible(true);
-        return portField.getInt(server);
-    }
 }

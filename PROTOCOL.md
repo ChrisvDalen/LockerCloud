@@ -1,32 +1,19 @@
-# LockerCloud Synchronization Protocol
+# LockerCloud Socket Protocol
 
-This document describes the protocol used for communication between the client and server components of the LockerCloud application. It is inspired by HTTP and uses a simple message format consisting of a start line, headers and an optional body.
+LockerCloud communicates over an SSL socket on port `9000`. Each command is sent as an ASCII line followed by optional binary data. The server replies with `OK`, `ERR` or the requested bytes.
 
 ## Commands
 
-| Method | Path         | Purpose                       |
-|-------|--------------|-------------------------------|
-| GET    | `/download`  | Download a file. Requires query parameter `fileName`. |
-| POST   | `/upload`    | Upload a file. Large files can be sent in chunks using the headers described below. |
-| POST   | `/sync`      | Request file synchronization. |
-| POST   | `/listFiles` | Retrieve the list of files on the server. |
-| DELETE | `/delete`    | Delete a file. Requires query parameter `fileName`. |
+- `UPLOAD <filename> <length>` – Send `<length>` raw bytes immediately after the newline. The file is stored on the server and validated with an optional checksum.
+- `DOWNLOAD <filename>` – The server responds with the byte length and then the raw bytes of the file.
+- `DELETE <filename>` – Removes the specified file and returns `OK`.
+- `LIST` – Returns a list of filenames terminated by the line `END`.
 
-## Headers
+## Large file handling
 
-* `Content-Length` – length of the request body in bytes.
-* `Content-Disposition` – for uploads, indicates the original file name.
-* `Checksum` – MD5 checksum used to validate an uploaded file or download response.
-* `Chunk-Index` – (optional) index of the uploaded chunk starting at 1.
-* `Chunk-Total` – (optional) total number of chunks for the file.
-* `File-Checksum` – (optional) final checksum of the whole file, sent with the last chunk.
-* `Host` – hostname of the server.
+Files larger than 4 GB are uploaded in 10 MB chunks internally. The client does not need to send chunk headers; the server handles splitting and assembling.
 
-## Large File Handling
+## Network failure recovery
 
-Files larger than **4 GB** are uploaded in chunks. Each chunk is sent in a separate `POST /upload` request. The server stores chunks as `<filename>.partN` and assembles them once the last chunk is received. The final file is validated using `File-Checksum`.
-
-## Network Failure Recovery
-
-The server retries upload and download operations up to three times in case of I/O errors. If a transactional upload with a checksum is requested, the file is only committed when the checksum matches.
+Operations are retried up to three times. If a checksum is provided and does not match after upload, the server deletes the file and returns `ERR`.
 

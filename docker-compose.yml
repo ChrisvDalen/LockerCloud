@@ -6,8 +6,10 @@ services:
     container_name: lockercloud_app
     ports:
       - "8443:8443"
+      - "9000:9000"
     environment:
       - SPRING_PROFILES_ACTIVE=prod
+      - KEYSTORE_PASSWORD=changeit
     volumes:
       - ./filestorage:/app/filestorage
       - ./keystore.p12:/app/keystore.p12:ro
