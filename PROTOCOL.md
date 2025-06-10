@@ -1,16 +1,18 @@
 # LockerCloud Synchronization Protocol
 
-This document describes the protocol used for communication between the client and server components of the LockerCloud application. It is inspired by HTTP and uses a simple message format consisting of a start line, headers and an optional body.
+This document describes the protocol used for communication between the client and server components of the LockerCloud application. Earlier versions used a custom HTTP-like protocol over raw sockets. The application now communicates via JSON messages over a secure WebSocket connection. Each message contains a `command` field and optional parameters.
 
 ## Commands
 
-| Method | Path         | Purpose                       |
-|-------|--------------|-------------------------------|
-| GET    | `/download`  | Download a file. Requires query parameter `fileName`. |
-| POST   | `/upload`    | Upload a file. Large files can be sent in chunks using the headers described below. |
-| POST   | `/sync`      | Request file synchronization. |
-| POST   | `/listFiles` | Retrieve the list of files on the server. |
-| DELETE | `/delete`    | Delete a file. Requires query parameter `fileName`. |
+Each JSON request contains a `command` field. Supported values are:
+
+| Command   | Extra velden             | Doel                                         |
+|-----------|-------------------------|----------------------------------------------|
+| `upload`  | `file`, `data` (Base64) | Upload een bestand. Grote bestanden kunnen in delen worden verstuurd. |
+| `download`| `file`                  | Download een bestand. Respons bevat `data` in Base64. |
+| `list`    | *geen*                  | Lijst alle beschikbare bestanden op de server. |
+| `delete`  | `file`                  | Verwijder een bestand. |
+| `sync`    | metadata JSON           | (optioneel) Synchronisatie van bestanden. |
 
 ## Headers
 

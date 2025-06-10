@@ -33,31 +33,31 @@ podman compose up --build
 ```
 The compose file mounts `keystore.p12` into the container at startup. Ensure the
 file is present in the project root (or adjust `SSL_KEYSTORE` accordingly).
-## SSL Socket Server
+## WebSocket Server
 
-The application starts an SSL socket server on port `8443` at runtime. This server exposes simple commands for file upload, download, listing and deletion without using HTTP. Each connection accepts a single command in the form:
+The application now exposes a secure WebSocket server on port `8443`. Clients communicate using JSON messages over `wss://`:
 
 ```
-UPLOAD <filename> <length>\n<bytes...>
-DOWNLOAD <filename>\n
-DELETE <filename>\n
-LIST\n
+{"command":"list"}
+{"command":"upload","file":"name","data":"<base64>"}
+{"command":"download","file":"name"}
+{"command":"delete","file":"name"}
 ```
 
-Responses are plain text or raw bytes. The server uses the same `keystore.p12` for TLS encryption.
+Responses are JSON as well (for downloads the file data is Base64 encoded). The server uses the same `keystore.p12` for TLS encryption.
 
 
 ## CLI Usage
 
-The web interface has been removed. Open <https://localhost:8443/> in a browser to see basic instructions, then use the command line client for all file operations:
+The web interface has been removed. Open <https://localhost:8443/> in a browser to see basic instructions, then use the WebSocket command line client for all file operations:
 
 ```bash
 java -cp target/LockerCloud-0.0.1-SNAPSHOT.jar \
-  org.soprasteria.avans.lockercloud.client.SocketClient list
+  org.soprasteria.avans.lockercloud.client.WebSocketClientApp list
 java -cp target/LockerCloud-0.0.1-SNAPSHOT.jar \
-  org.soprasteria.avans.lockercloud.client.SocketClient upload /path/to/file
+  org.soprasteria.avans.lockercloud.client.WebSocketClientApp upload /path/to/file
 java -cp target/LockerCloud-0.0.1-SNAPSHOT.jar \
-  org.soprasteria.avans.lockercloud.client.SocketClient download file.txt /tmp/file.txt
+  org.soprasteria.avans.lockercloud.client.WebSocketClientApp download file.txt /tmp/file.txt
 ```
 
-The client communicates directly with the `SSLFileServer` using the protocol described in `PROTOCOL.md`.
+The client communicates with the `WebSocketFileServer` using the protocol described in `PROTOCOL.md`.

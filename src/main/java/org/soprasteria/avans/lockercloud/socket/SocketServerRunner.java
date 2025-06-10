@@ -1,13 +1,14 @@
 package org.soprasteria.avans.lockercloud.socket;
 
 import org.soprasteria.avans.lockercloud.service.FileManagerService;
+import org.soprasteria.avans.lockercloud.socket.WebSocketFileServer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 
 /**
- * Starts the SSLFileServer on application startup.
+ * Starts the WebSocketFileServer on application startup.
  */
 @Component
 public class SocketServerRunner implements CommandLineRunner {
@@ -36,10 +37,12 @@ public class SocketServerRunner implements CommandLineRunner {
         } else if (path.startsWith("file:")) {
             path = path.substring("file:".length());
         }
-        SSLFileServer server = new SSLFileServer(port, fileManagerService,
-                path, keyStorePassword);
-        Thread t = new Thread(server);
-        t.setDaemon(true);
-        t.start();
+        try {
+            WebSocketFileServer server = new WebSocketFileServer(port, fileManagerService,
+                    path, keyStorePassword);
+            server.start();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to start WebSocket server", e);
+        }
     }
 }
