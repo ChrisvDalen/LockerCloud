@@ -59,88 +59,111 @@ public class SSLFileServer implements Runnable {
     }
 
     private void handle(SSLSocket socket) {
-        try (DataInputStream in = new DataInputStream(socket.getInputStream());
-             DataOutputStream out = new DataOutputStream(socket.getOutputStream())) {
-            String cmd = readLine(in);
-            if (cmd == null) return;
-            String[] parts = cmd.split(" ");
-            switch (parts[0].toUpperCase()) {
-                case "UPLOAD":
-                    handleUpload(parts, in, out);
-                    break;
-                case "DOWNLOAD":
-                    handleDownload(parts, out);
-                    break;
-                case "DELETE":
-                    handleDelete(parts, out);
-                    break;
-                case "LIST":
-                    handleList(out);
-                    break;
-                default:
-                    out.write("ERR\n".getBytes());
+        try {
+            InputStream rawIn = socket.getInputStream();
+            DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+            BufferedReader reader = new BufferedReader(new InputStreamReader(rawIn));
+
+            String start = reader.readLine();
+            if (start == null) {
+                return;
             }
+
+            String[] first = start.split(" ");
+            if (first.length < 2) {
+                return;
+            }
+            String method = first[0];
+            String target = first[1];
+
+            // Read headers
+            String line;
+            java.util.Map<String, String> headers = new java.util.HashMap<>();
+            while ((line = reader.readLine()) != null && !line.isEmpty()) {
+                int idx = line.indexOf(':');
+                if (idx > 0) {
+                    headers.put(line.substring(0, idx).trim(), line.substring(idx + 1).trim());
+                }
+            }
+
+            int contentLen = headers.containsKey("Content-Length") ? Integer.parseInt(headers.get("Content-Length")) : 0;
+            byte[] body = new byte[contentLen];
+            int read = 0;
+            while (read < contentLen) {
+                int r = rawIn.read(body, read, contentLen - read);
+                if (r == -1) break;
+                read += r;
+            }
+
+            switch (method) {
+                case "POST" -> handlePost(target, headers, body, out);
+                case "GET" -> handleGet(target, out);
+                case "DELETE" -> handleDelete(target, out);
+                default -> out.writeBytes("HTTP/1.1 400 Bad Request\r\n\r\n");
+            }
+
             out.flush();
         } catch (IOException e) {
-            // ignore, connection closed
+            // ignore
         }
     }
 
-    private void handleUpload(String[] parts, DataInputStream in, DataOutputStream out) throws IOException {
-        if (parts.length < 3) {
-            out.write("ERR\n".getBytes());
-            return;
-        }
-        String name = parts[1];
-        long len = Long.parseLong(parts[2]);
-        byte[] data = new byte[(int) len];
-        in.readFully(data);
-        try (InputStream dataIn = new ByteArrayInputStream(data)) {
-            fileService.saveStream(name, dataIn);
-        }
-        out.writeBytes("OK\n");
-    }
-
-    private void handleDownload(String[] parts, DataOutputStream out) throws IOException {
-        if (parts.length < 2) {
-            out.writeBytes("ERR\n");
-            return;
-        }
-        String name = parts[1];
-        byte[] data = fileService.getFile(name);
-        out.writeBytes(data.length + "\n");
-        out.write(data);
-    }
-
-    private void handleDelete(String[] parts, DataOutputStream out) throws IOException {
-        if (parts.length < 2) {
-            out.writeBytes("ERR\n");
-            return;
-        }
-        fileService.deleteFile(parts[1]);
-        out.writeBytes("OK\n");
-    }
-
-    private void handleList(DataOutputStream out) throws IOException {
-        List<String> files = fileService.listFiles();
-        for (String f : files) {
-            out.writeBytes(f + "\n");
-        }
-        out.writeBytes("END\n");
-    }
-
-    private String readLine(DataInputStream in) throws IOException {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        int b;
-        while ((b = in.read()) != -1) {
-            if (b == '\n') {
-                break;
+    private void handlePost(String target, java.util.Map<String, String> headers, byte[] body, DataOutputStream out) throws IOException {
+        if ("/upload".equals(target)) {
+            String disposition = headers.getOrDefault("Content-Disposition", "");
+            String fileName = disposition.replace("attachment; filename=", "").replace("\"", "");
+            try (InputStream is = new ByteArrayInputStream(body)) {
+                fileService.saveStream(fileName, is);
             }
-            baos.write(b);
+            out.writeBytes("HTTP/1.1 200 OK\r\n\r\n");
+        } else if ("/listFiles".equals(target)) {
+            java.util.List<String> list = fileService.listFiles();
+            String json = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(list);
+            out.writeBytes("HTTP/1.1 200 OK\r\nContent-Length: " + json.getBytes().length + "\r\n\r\n");
+            out.writeBytes(json);
+        } else if ("/sync".equals(target)) {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            java.util.List<org.soprasteria.avans.lockercloud.model.FileMetadata> meta = java.util.Arrays.asList(mapper.readValue(body, org.soprasteria.avans.lockercloud.model.FileMetadata[].class));
+            org.soprasteria.avans.lockercloud.dto.SyncResult result = fileService.syncFiles(meta);
+            String json = mapper.writeValueAsString(result);
+            out.writeBytes("HTTP/1.1 200 OK\r\nContent-Length: " + json.getBytes().length + "\r\n\r\n");
+            out.writeBytes(json);
+        } else {
+            out.writeBytes("HTTP/1.1 400 Bad Request\r\n\r\n");
         }
-        if (baos.size() == 0 && b == -1) {
-            return null;
+    }
+
+    private void handleGet(String target, DataOutputStream out) throws IOException {
+        if (target.startsWith("/download")) {
+            int idx = target.indexOf("file=");
+            if (idx == -1) {
+                out.writeBytes("HTTP/1.1 400 Bad Request\r\n\r\n");
+                return;
+            }
+            String name = target.substring(idx + 5);
+            byte[] data = fileService.getFile(name);
+            String checksum = fileService.calculateChecksum(data);
+            out.writeBytes("HTTP/1.1 200 OK\r\n");
+            out.writeBytes("Content-Length: " + data.length + "\r\n");
+            out.writeBytes("Checksum: " + checksum + "\r\n\r\n");
+            out.write(data);
+        } else {
+            out.writeBytes("HTTP/1.1 400 Bad Request\r\n\r\n");
         }
-        return baos.toString("UTF-8");
+    }
+
+    private void handleDelete(String target, DataOutputStream out) throws IOException {
+        if (target.startsWith("/delete")) {
+            int idx = target.indexOf("file=");
+            if (idx == -1) {
+                out.writeBytes("HTTP/1.1 400 Bad Request\r\n\r\n");
+                return;
+            }
+            String name = target.substring(idx + 5);
+            fileService.deleteFile(name);
+            out.writeBytes("HTTP/1.1 200 OK\r\n\r\n");
+        } else {
+            out.writeBytes("HTTP/1.1 400 Bad Request\r\n\r\n");
+        }
     }
 }
