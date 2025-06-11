@@ -1,0 +1,11 @@
+# Java
+/target/
+*.class
+*.jar
+*.war
+*.iml
+
+# Node
+/node_modules/
+/dist/
+.env
