@@ -67,7 +67,7 @@ public class FileController {
             } else if (checksum != null && !checksum.isBlank()) {
                 fileManagerService.saveFileTransactionalWithRetry(file, checksum);
             } else {
-                fileManagerService.saveFileWithRetry(file);
+                fileManagerService.saveFileWithRetry(file, null);
             }
             redirectAttributes.addFlashAttribute(
               "uploadSuccess",
