@@ -20,6 +20,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -44,18 +46,25 @@ public class FileController {
     @ApiResponse(responseCode = "200", description = "File uploaded successfully")
     @ApiResponse(responseCode = "400", description = "Error uploading file")
     @PostMapping("/upload")
-    public ResponseEntity<String> uploadFile(
+    public ResponseEntity<Map<String, String>> uploadFile(
             @RequestParam("file") MultipartFile file,
             @RequestHeader(value = "Checksum", required = false) String checksum) {
+        Map<String, String> resp = new HashMap<>();
         try {
             if (checksum != null) {
                 fileManagerService.saveFileTransactional(file, checksum);
             } else {
                 fileManagerService.saveFileWithRetry(file);
             }
-            return ResponseEntity.ok("File uploaded successfully");
+            resp.put("status", "ok");
+            String storedChecksum = fileManagerService.getFileChecksum(file.getOriginalFilename());
+            if (storedChecksum != null) {
+                resp.put("checksum", storedChecksum);
+            }
+            return ResponseEntity.ok(resp);
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Error uploading file: " + e.getMessage());
+            resp.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(resp);
         }
     }
 

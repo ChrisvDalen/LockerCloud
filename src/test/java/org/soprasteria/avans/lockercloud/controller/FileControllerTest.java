@@ -39,10 +39,10 @@ class FileControllerTest {
     void uploadFile_success() {
         MultipartFile file = new MockMultipartFile("file", "test.txt", "text/plain", "data".getBytes());
 
-        ResponseEntity<String> resp = controller.uploadFile(file, null);
+        ResponseEntity<Map<String, String>> resp = controller.uploadFile(file, null);
 
         assertEquals(HttpStatus.OK, resp.getStatusCode());
-        assertEquals("File uploaded successfully", resp.getBody());
+        assertEquals("ok", resp.getBody().get("status"));
         verify(fileManagerService).saveFileWithRetry(file);
     }
 
@@ -51,10 +51,10 @@ class FileControllerTest {
         MultipartFile file = new MockMultipartFile("file", "bad.txt", "text/plain", "data".getBytes());
         doThrow(new RuntimeException("oops")).when(fileManagerService).saveFileWithRetry(file);
 
-        ResponseEntity<String> resp = controller.uploadFile(file, null);
+        ResponseEntity<Map<String, String>> resp = controller.uploadFile(file, null);
 
         assertEquals(HttpStatus.BAD_REQUEST, resp.getStatusCode());
-        assertEquals("Error uploading file: oops", resp.getBody());
+        assertEquals("oops", resp.getBody().get("error"));
         verify(fileManagerService).saveFileWithRetry(file);
     }
 
