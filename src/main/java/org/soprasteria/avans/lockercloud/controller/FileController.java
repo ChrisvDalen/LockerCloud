@@ -107,7 +107,13 @@ public class FileController {
     @GetMapping("/downloadAll")
     public ResponseEntity<byte[]> downloadAllFiles() {
         try {
-            List<String> filenames = fileManagerService.listFiles();
+            List<String> filenames;
+            try {
+                filenames = fileManagerService.listFiles();
+            } catch (Exception e) {
+                System.err.println("Warning: could not list files: " + e.getMessage());
+                filenames = Collections.emptyList();
+            }
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             try (ZipOutputStream zos = new ZipOutputStream(baos)) {
                 for (String name : filenames) {
@@ -121,7 +127,7 @@ public class FileController {
                         zos.putNextEntry(entry);
                         zos.write(data);
                         zos.closeEntry();
-                    } catch (RuntimeException ex) {
+                    } catch (Exception ex) {
                         System.err.println("Warning: Failed to add " + name + " to ZIP: " + ex.getMessage());
                     }
                 }
@@ -130,9 +136,9 @@ public class FileController {
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"all-files.zip\"")
                     .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(zipBytes.length))
-                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                    .contentType(MediaType.parseMediaType("application/zip"))
                     .body(zipBytes);
-        } catch (IOException | RuntimeException e) {
+        } catch (IOException e) {
             return ResponseEntity
                     .status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(null);
