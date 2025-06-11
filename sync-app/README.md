@@ -30,3 +30,15 @@ npm start
 ```
 
 The UI is available on http://localhost:4200 .
+
+## Docker Compose
+
+After building the server jar (`mvn -f sync-app/pom.xml package`), you can run
+both the server and the UI using Docker Compose:
+
+```bash
+docker compose -f sync-app/docker-compose.yml up
+```
+
+Uploaded files are stored in a named Docker volume so that they persist between
+container restarts.
