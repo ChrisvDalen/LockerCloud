@@ -64,7 +64,7 @@ class FileControllerTest {
         when(fileManagerService.getFile("f.bin")).thenReturn(data);
         when(fileManagerService.getFileChecksum("f.bin")).thenReturn("abc");
 
-        ResponseEntity<byte[]> resp = controller.downloadFile("f.bin");
+        ResponseEntity<byte[]> resp = controller.downloadFile("f.bin", null);
 
         assertEquals(HttpStatus.OK, resp.getStatusCode());
         assertEquals("attachment; filename=\"f.bin\"", resp.getHeaders().getFirst(HttpHeaders.CONTENT_DISPOSITION));
@@ -78,7 +78,7 @@ class FileControllerTest {
     void downloadFile_error() {
         when(fileManagerService.getFile("x")).thenThrow(new RuntimeException("nf"));
 
-        ResponseEntity<byte[]> resp = controller.downloadFile("x");
+        ResponseEntity<byte[]> resp = controller.downloadFile("x", null);
 
         assertEquals(HttpStatus.BAD_REQUEST, resp.getStatusCode());
         assertNull(resp.getBody());

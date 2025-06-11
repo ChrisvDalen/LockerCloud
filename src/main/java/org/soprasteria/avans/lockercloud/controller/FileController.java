@@ -72,7 +72,12 @@ public class FileController {
     @ApiResponse(responseCode = "200", description = "File downloaded successfully")
     @ApiResponse(responseCode = "400", description = "Error downloading file")
     @GetMapping("/download")
-    public ResponseEntity<byte[]> downloadFile(@RequestParam("file") String fileName) {
+    public ResponseEntity<byte[]> downloadFile(
+            @RequestParam(value = "file", required = false) String file,
+            @RequestParam(value = "fileName", required = false) String fileName) {
+        if (fileName == null || fileName.isEmpty()) {
+            fileName = file;
+        }
         return doDownload(fileName);
     }
 
