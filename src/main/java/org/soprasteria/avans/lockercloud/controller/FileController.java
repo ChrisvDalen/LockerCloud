@@ -15,7 +15,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -45,33 +44,33 @@ public class FileController {
     @ApiResponse(responseCode = "200", description = "File uploaded successfully")
     @ApiResponse(responseCode = "400", description = "Error uploading file")
     @PostMapping("/upload")
-    public String uploadFile(
+    public ResponseEntity<String> uploadFile(
             @RequestParam("file") MultipartFile file,
-            RedirectAttributes redirectAttributes) {
+            @RequestHeader(value = "Checksum", required = false) String checksum) {
         try {
-            fileManagerService.saveFileWithRetry(file);
-            redirectAttributes.addFlashAttribute(
-              "uploadSuccess",
-              "Bestand " + file.getOriginalFilename() + " succesvol geüpload!"
-            );
+            if (checksum != null) {
+                fileManagerService.saveFileTransactional(file, checksum);
+            } else {
+                fileManagerService.saveFileWithRetry(file);
+            }
+            return ResponseEntity.ok("File uploaded successfully");
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute(
-              "uploadError",
-              "Fout bij uploaden: " + e.getMessage()
-            );
+            return ResponseEntity.badRequest().body("Error uploading file: " + e.getMessage());
         }
-        return "redirect:/";
     }
 
     @Operation(summary = "Download a file", description = "Downloads a file from the server")
     @ApiResponse(responseCode = "200", description = "File downloaded successfully")
     @ApiResponse(responseCode = "400", description = "Error downloading file")
     @GetMapping("/download")
-    public ResponseEntity<byte[]> downloadFile(@RequestParam("fileName") String fileName) {
+    public ResponseEntity<byte[]> downloadFile(@RequestParam("file") String fileName) {
         try {
             byte[] fileData = fileManagerService.getFile(fileName);
+            String checksum = fileManagerService.getFileChecksum(fileName);
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileName + "\"")
+                    .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(fileData.length))
+                    .header("Checksum", checksum == null ? "" : checksum)
                     .contentType(MediaType.APPLICATION_OCTET_STREAM)
                     .body(fileData);
         } catch (Exception e) {

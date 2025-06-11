@@ -25,8 +25,8 @@ import java.util.stream.Stream;
 @Service
 public class FileManagerService {
 
-    // Voor grote bestanden (demonstratie: 100 MB threshold, in productie 4GB)
-    private static final long CHUNK_THRESHOLD = 100 * 1024 * 1024; // 100 MB
+    // Voor grote bestanden (>4GB) wordt chunking toegepast
+    private static final long CHUNK_THRESHOLD = 4L * 1024 * 1024 * 1024; // 4 GB
     private static final long CHUNK_SIZE = 10 * 1024 * 1024; // 10 MB
 
     private final Path storageLocation = Paths.get("filestorage");
@@ -208,6 +208,26 @@ public class FileManagerService {
             } catch (IOException e) {
                 throw new FileStorageException("Error reading file chunks for " + normalizedFileName, e);
             }
+        }
+    }
+
+    /**
+     * Calculate and return the checksum for a stored file. Returns null when the
+     * file does not exist.
+     */
+    public String getFileChecksum(String fileName) {
+        if (fileName == null) {
+            return null;
+        }
+        String normalizedFileName = Paths.get(fileName).getFileName().toString();
+        Path filePath = storageLocation.resolve(normalizedFileName);
+        if (!Files.exists(filePath)) {
+            return null;
+        }
+        try {
+            return calculateChecksum(filePath);
+        } catch (IOException e) {
+            throw new FileStorageException("Error calculating checksum for " + normalizedFileName, e);
         }
     }
 

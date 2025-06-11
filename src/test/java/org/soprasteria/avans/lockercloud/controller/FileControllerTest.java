@@ -7,8 +7,6 @@ import org.mockito.*;
 import org.springframework.http.*;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.web.servlet.mvc.support.RedirectAttributes;
-import org.springframework.web.servlet.mvc.support.RedirectAttributesModelMap;
 import org.soprasteria.avans.lockercloud.dto.SyncResult;
 import org.soprasteria.avans.lockercloud.model.FileMetadata;
 import org.soprasteria.avans.lockercloud.service.FileManagerService;
@@ -38,48 +36,46 @@ class FileControllerTest {
     }
 
     @Test
-    void uploadFile_success() throws Exception {
+    void uploadFile_success() {
         MultipartFile file = new MockMultipartFile("file", "test.txt", "text/plain", "data".getBytes());
-        RedirectAttributes attrs = new RedirectAttributesModelMap();
 
-        String view = controller.uploadFile(file, attrs);
+        ResponseEntity<String> resp = controller.uploadFile(file, null);
 
-        assertEquals("redirect:/", view);
-        assertTrue(attrs.getFlashAttributes().containsKey("uploadSuccess"));
-        assertEquals("Bestand test.txt succesvol geüpload!", attrs.getFlashAttributes().get("uploadSuccess"));
+        assertEquals(HttpStatus.OK, resp.getStatusCode());
+        assertEquals("File uploaded successfully", resp.getBody());
         verify(fileManagerService).saveFileWithRetry(file);
     }
 
     @Test
-    void uploadFile_error() throws Exception {
+    void uploadFile_error() {
         MultipartFile file = new MockMultipartFile("file", "bad.txt", "text/plain", "data".getBytes());
         doThrow(new RuntimeException("oops")).when(fileManagerService).saveFileWithRetry(file);
-        RedirectAttributes attrs = new RedirectAttributesModelMap();
 
-        String view = controller.uploadFile(file, attrs);
+        ResponseEntity<String> resp = controller.uploadFile(file, null);
 
-        assertEquals("redirect:/", view);
-        assertTrue(attrs.getFlashAttributes().containsKey("uploadError"));
-        assertEquals("Fout bij uploaden: oops", attrs.getFlashAttributes().get("uploadError"));
+        assertEquals(HttpStatus.BAD_REQUEST, resp.getStatusCode());
+        assertEquals("Error uploading file: oops", resp.getBody());
         verify(fileManagerService).saveFileWithRetry(file);
     }
 
     @Test
-    void downloadFile_success() throws Exception {
+    void downloadFile_success() {
         byte[] data = {1,2,3};
         when(fileManagerService.getFile("f.bin")).thenReturn(data);
+        when(fileManagerService.getFileChecksum("f.bin")).thenReturn("abc");
 
         ResponseEntity<byte[]> resp = controller.downloadFile("f.bin");
 
         assertEquals(HttpStatus.OK, resp.getStatusCode());
         assertEquals("attachment; filename=\"f.bin\"", resp.getHeaders().getFirst(HttpHeaders.CONTENT_DISPOSITION));
+        assertEquals("abc", resp.getHeaders().getFirst("Checksum"));
+        assertEquals(String.valueOf(data.length), resp.getHeaders().getFirst(HttpHeaders.CONTENT_LENGTH));
         assertEquals(MediaType.APPLICATION_OCTET_STREAM, resp.getHeaders().getContentType());
         assertArrayEquals(data, resp.getBody());
     }
 
     @Test
     void downloadFile_error() {
-        // throw unchecked to satisfy Mockito
         when(fileManagerService.getFile("x")).thenThrow(new RuntimeException("nf"));
 
         ResponseEntity<byte[]> resp = controller.downloadFile("x");
