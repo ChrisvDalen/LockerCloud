@@ -111,27 +111,31 @@ public class FileController {
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             try (ZipOutputStream zos = new ZipOutputStream(baos)) {
                 for (String name : filenames) {
-                    byte[] data = fileManagerService.getFile(name);
-                    if (data == null) {
-                        // Log a warning and skip this file
-                        System.err.println("Warning: File " + name + " could not be found or is empty.");
-                        continue;
+                    try {
+                        byte[] data = fileManagerService.getFile(name);
+                        if (data == null) {
+                            System.err.println("Warning: File " + name + " could not be found or is empty.");
+                            continue;
+                        }
+                        ZipEntry entry = new ZipEntry(name);
+                        zos.putNextEntry(entry);
+                        zos.write(data);
+                        zos.closeEntry();
+                    } catch (RuntimeException ex) {
+                        System.err.println("Warning: Failed to add " + name + " to ZIP: " + ex.getMessage());
                     }
-                    ZipEntry entry = new ZipEntry(name);
-                    zos.putNextEntry(entry);
-                    zos.write(data);
-                    zos.closeEntry();
                 }
             }
             byte[] zipBytes = baos.toByteArray();
             return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"all-files.zip\"")
-                .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                .body(zipBytes);
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"all-files.zip\"")
+                    .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(zipBytes.length))
+                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                    .body(zipBytes);
         } catch (IOException | RuntimeException e) {
             return ResponseEntity
-                .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(null);
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(null);
         }
     }
 
