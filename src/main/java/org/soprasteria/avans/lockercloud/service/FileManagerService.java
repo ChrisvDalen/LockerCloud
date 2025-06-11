@@ -60,18 +60,14 @@ public class FileManagerService {
         String normalizedFilename = Paths.get(originalFilename).getFileName().toString();
         Path targetLocation = storageLocation.resolve(normalizedFilename);
 
-        try {
-            if (file.getSize() > CHUNK_THRESHOLD) {
-                // Grote bestanden: chunking logica
-                saveLargeFile(file, expectedChecksum);
-                return;
-            }
-
-            // Kleine bestanden: transactionele opslag met checksum-validatie
-            saveFileTransactional(file, expectedChecksum);
-        } catch (IOException e) {
-            throw new FileStorageException("Error saving file " + normalizedFilename, e);
+        if (file.getSize() > CHUNK_THRESHOLD) {
+            // Grote bestanden: chunking logica
+            saveLargeFile(file, expectedChecksum);
+            return;
         }
+
+        // Kleine bestanden: transactionele opslag met checksum-validatie
+        saveFileTransactional(file, expectedChecksum);
     }
 
     @Retryable(retryFor = { IOException.class }, maxAttempts = 3, backoff = @Backoff(delay = 2000))
