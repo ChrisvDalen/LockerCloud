@@ -65,8 +65,13 @@ public class ServerApp {
             Files.write(p, req.body);
             writeSimple(out, 200, "Uploaded");
         } else if (req.path.equals("/listFiles")) {
-            List<String> files = Files.list(storage).map(Path::getFileName).map(Path::toString).toList();
-            byte[] data = ("[" + String.join(",", files.stream().map(s->\"\"\""+s+"\"\"\").toList()) + "]").getBytes();
+            List<String> files = Files.list(storage)
+                    .map(Path::getFileName)
+                    .map(Path::toString)
+                    .toList();
+            byte[] data = ("[" + String.join(",",
+                    files.stream().map(s -> "\"" + s + "\"").toList()) + "]")
+                    .getBytes();
             writeResponse(out, 200, "OK", data);
         } else if (req.path.equals("/sync")) {
             // simple stub
