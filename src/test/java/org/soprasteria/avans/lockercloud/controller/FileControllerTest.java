@@ -169,7 +169,7 @@ class FileControllerTest {
     void deleteFile_success() throws Exception {
         doNothing().when(fileManagerService).deleteFile("f");
 
-        ResponseEntity<String> resp = controller.deleteFile("f");
+        ResponseEntity<String> resp = controller.deleteFile("f", null);
 
         assertEquals(HttpStatus.OK, resp.getStatusCode());
         assertEquals("File deleted successfully", resp.getBody());
@@ -179,7 +179,7 @@ class FileControllerTest {
     void deleteFile_error() throws Exception {
         doThrow(new RuntimeException("fail del")).when(fileManagerService).deleteFile("f");
 
-        ResponseEntity<String> resp = controller.deleteFile("f");
+        ResponseEntity<String> resp = controller.deleteFile("f", null);
 
         assertEquals(HttpStatus.BAD_REQUEST, resp.getStatusCode());
         assertEquals("Error deleting file: fail del", resp.getBody());
