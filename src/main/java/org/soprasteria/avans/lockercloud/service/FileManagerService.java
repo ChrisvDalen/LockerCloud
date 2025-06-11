@@ -120,10 +120,18 @@ public class FileManagerService {
         }
 
         String normalized = Paths.get(fileName).getFileName().toString();
+
+        // For very large files, store chunks first and then combine them to avoid
+        // keeping data in memory. This mirrors the MultipartFile large file logic.
+        if (length > CHUNK_THRESHOLD) {
+            return saveLargeStream(normalized, in, length, expectedChecksum);
+        }
+
         Path tempPath = storageLocation.resolve(normalized + ".tmp");
         Path finalPath = storageLocation.resolve(normalized);
 
-        try (OutputStream os = Files.newOutputStream(tempPath, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+        try (OutputStream os = Files.newOutputStream(tempPath,
+                StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
             MessageDigest md = MessageDigest.getInstance("MD5");
             byte[] buffer = new byte[8192];
             long remaining = length;
@@ -146,8 +154,72 @@ public class FileManagerService {
         } catch (IOException | NoSuchAlgorithmException e) {
             try {
                 Files.deleteIfExists(tempPath);
-            } catch (IOException ignored) {}
+            } catch (IOException ignored) {
+            }
             throw new FileStorageException("Error saving file " + normalized, e);
+        }
+    }
+
+    private String saveLargeStream(String normalized, InputStream in, long length, String expectedChecksum) {
+        List<Path> chunks = new ArrayList<>();
+        MessageDigest md;
+        try {
+            md = MessageDigest.getInstance("MD5");
+        } catch (NoSuchAlgorithmException e) {
+            throw new FileStorageException("MD5 not available", e);
+        }
+
+        long remaining = length;
+        int chunkIndex = 1;
+        byte[] buffer = new byte[8192];
+        try {
+            while (remaining > 0) {
+                long chunkRemaining = Math.min(remaining, CHUNK_SIZE);
+                Path chunkPath = storageLocation.resolve(normalized + ".part" + chunkIndex++);
+                chunks.add(chunkPath);
+                try (OutputStream os = Files.newOutputStream(chunkPath,
+                        StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+                    long written = 0;
+                    while (written < chunkRemaining) {
+                        int read = in.read(buffer, 0, (int) Math.min(buffer.length, chunkRemaining - written));
+                        if (read == -1) {
+                            throw new IOException("Unexpected end of stream");
+                        }
+                        os.write(buffer, 0, read);
+                        md.update(buffer, 0, read);
+                        written += read;
+                        remaining -= read;
+                    }
+                }
+            }
+
+            String checksum = bytesToHex(md.digest());
+            if (expectedChecksum != null && !checksum.equalsIgnoreCase(expectedChecksum)) {
+                for (Path p : chunks) {
+                    Files.deleteIfExists(p);
+                }
+                throw new FileStorageException("Checksum mismatch for file " + normalized);
+            }
+
+            Path finalPath = storageLocation.resolve(normalized);
+            try (OutputStream finalOs = Files.newOutputStream(finalPath,
+                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+                for (Path chunk : chunks) {
+                    Files.copy(chunk, finalOs);
+                }
+            }
+            for (Path chunk : chunks) {
+                Files.deleteIfExists(chunk);
+            }
+            return checksum;
+        } catch (IOException e) {
+            for (Path chunk : chunks) {
+                try {
+                    Files.deleteIfExists(chunk);
+                } catch (IOException ignored) {
+                }
+            }
+            throw new FileStorageException("Error saving large file " + normalized, e);
         }
     }
 
