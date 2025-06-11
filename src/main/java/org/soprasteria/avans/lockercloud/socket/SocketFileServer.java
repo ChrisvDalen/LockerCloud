@@ -1,6 +1,8 @@
 package org.soprasteria.avans.lockercloud.socket;
 
 import org.soprasteria.avans.lockercloud.service.FileManagerService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.net.ServerSocket;
@@ -16,6 +18,7 @@ import java.util.Map;
  * commands without using a web framework.
  */
 public class SocketFileServer implements Runnable {
+    private static final Logger log = LoggerFactory.getLogger(SocketFileServer.class);
     private final int port;
     private final FileManagerService fileManager;
     private volatile boolean running = true;
@@ -32,12 +35,14 @@ public class SocketFileServer implements Runnable {
     @Override
     public void run() {
         try (ServerSocket serverSocket = new ServerSocket(port)) {
+            log.info("SocketFileServer started on port {}", port);
             while (running) {
                 Socket socket = serverSocket.accept();
+                log.debug("Accepted connection from {}", socket.getRemoteSocketAddress());
                 new Thread(() -> handleClient(socket)).start();
             }
         } catch (IOException e) {
-            System.err.println("Socket server stopped: " + e.getMessage());
+            log.error("Socket server stopped", e);
         }
     }
 
@@ -49,6 +54,7 @@ public class SocketFileServer implements Runnable {
 
             String startLine = reader.readLine();
             if (startLine == null) return;
+            log.debug("Request: {}", startLine);
             Map<String, String> headers = new HashMap<>();
             String line;
             while ((line = reader.readLine()) != null && !line.isEmpty()) {
@@ -72,7 +78,7 @@ public class SocketFileServer implements Runnable {
                 writeStatus(out, 400, "Bad Request", "Unknown command");
             }
         } catch (IOException e) {
-            System.err.println("Client error: " + e.getMessage());
+            log.error("Client handling error", e);
         } finally {
             try { socket.close(); } catch (IOException ignored) {}
         }
@@ -93,10 +99,13 @@ public class SocketFileServer implements Runnable {
             return;
         }
         try {
+            log.info("Uploading {} ({} bytes)", fileName, length);
             String actual = fileManager.saveFileStream(fileName, in, length, checksumHeader);
             writeStatus(out, 200, "OK", "uploaded");
             out.write(("Checksum: " + actual + "\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+            log.debug("Upload complete for {}", fileName);
         } catch (Exception e) {
+            log.error("Upload failed for {}", fileName, e);
             writeStatus(out, 500, "Internal Server Error", e.getMessage());
         }
     }
@@ -109,6 +118,7 @@ public class SocketFileServer implements Runnable {
         }
         String fileName = startLine.substring(idx + 5).trim();
         try {
+            log.info("Downloading {}", fileName);
             byte[] data = fileManager.getFile(fileName);
             if (data == null) {
                 writeStatus(out, 404, "Not Found", "no file");
@@ -123,7 +133,9 @@ public class SocketFileServer implements Runnable {
             sb.append("\r\n");
             out.write(sb.toString().getBytes(StandardCharsets.UTF_8));
             out.write(data);
+            log.debug("Download complete for {}", fileName);
         } catch (Exception e) {
+            log.error("Download failed for {}", fileName, e);
             writeStatus(out, 500, "Internal Server Error", e.getMessage());
         }
     }
@@ -136,15 +148,18 @@ public class SocketFileServer implements Runnable {
         }
         String fileName = startLine.substring(idx + 5).trim();
         try {
+            log.info("Deleting {}", fileName);
             fileManager.deleteFile(fileName);
             writeStatus(out, 200, "OK", "deleted");
         } catch (Exception e) {
+            log.error("Delete failed for {}", fileName, e);
             writeStatus(out, 500, "Internal Server Error", e.getMessage());
         }
     }
 
     private void handleListFiles(OutputStream out) throws IOException {
         try {
+            log.info("Listing files");
             List<String> files = fileManager.listFiles();
             String body = String.join("\n", files);
             StringBuilder sb = new StringBuilder();
@@ -152,12 +167,15 @@ public class SocketFileServer implements Runnable {
             sb.append("Content-Length: ").append(body.getBytes(StandardCharsets.UTF_8).length).append("\r\n\r\n");
             sb.append(body);
             out.write(sb.toString().getBytes(StandardCharsets.UTF_8));
+            log.debug("Returned {} file names", files.size());
         } catch (Exception e) {
+            log.error("Listing files failed", e);
             writeStatus(out, 500, "Internal Server Error", e.getMessage());
         }
     }
 
     private void handleSync(OutputStream out) throws IOException {
+        log.info("Sync requested (not implemented)");
         writeStatus(out, 200, "OK", "sync not implemented");
     }
 
