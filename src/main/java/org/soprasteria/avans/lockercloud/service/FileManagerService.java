@@ -107,6 +107,50 @@ public class FileManagerService {
         }
     }
 
+    /**
+     * Stream data from the given InputStream directly to disk. The stream will
+     * be read until {@code length} bytes have been consumed. The resulting file
+     * checksum is returned. When {@code expectedChecksum} is not {@code null},
+     * the written data is validated against it and an exception is thrown on
+     * mismatch.
+     */
+    public String saveFileStream(String fileName, InputStream in, long length, String expectedChecksum) {
+        if (fileName == null || fileName.trim().isEmpty()) {
+            throw new FileStorageException("File name cannot be null or empty.");
+        }
+
+        String normalized = Paths.get(fileName).getFileName().toString();
+        Path tempPath = storageLocation.resolve(normalized + ".tmp");
+        Path finalPath = storageLocation.resolve(normalized);
+
+        try (OutputStream os = Files.newOutputStream(tempPath, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+            MessageDigest md = MessageDigest.getInstance("MD5");
+            byte[] buffer = new byte[8192];
+            long remaining = length;
+            while (remaining > 0) {
+                int read = in.read(buffer, 0, (int) Math.min(buffer.length, remaining));
+                if (read == -1) {
+                    throw new IOException("Unexpected end of stream");
+                }
+                os.write(buffer, 0, read);
+                md.update(buffer, 0, read);
+                remaining -= read;
+            }
+            String checksum = bytesToHex(md.digest());
+            if (expectedChecksum != null && !checksum.equalsIgnoreCase(expectedChecksum)) {
+                Files.deleteIfExists(tempPath);
+                throw new FileStorageException("Checksum mismatch for file " + normalized);
+            }
+            Files.move(tempPath, finalPath, StandardCopyOption.REPLACE_EXISTING);
+            return checksum;
+        } catch (IOException | NoSuchAlgorithmException e) {
+            try {
+                Files.deleteIfExists(tempPath);
+            } catch (IOException ignored) {}
+            throw new FileStorageException("Error saving file " + normalized, e);
+        }
+    }
+
     @Recover
     public void recoverSaveFile(IOException e, MultipartFile file) { // Corrected signature
         String fileName = file.getOriginalFilename();
@@ -599,5 +643,13 @@ public class FileManagerService {
                            ", Conflicts: " + conflictFiles.size());
 
         return new SyncResult(successfullyCopiedToServer, successfullyCopiedToClient, conflictFiles);
+    }
+
+    private static String bytesToHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : bytes) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
     }
 }

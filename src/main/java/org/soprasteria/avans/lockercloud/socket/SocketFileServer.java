@@ -1,17 +1,19 @@
 package org.soprasteria.avans.lockercloud.socket;
 
 import org.soprasteria.avans.lockercloud.service.FileManagerService;
+
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
- * Simple socket server implementing the custom file upload/download protocol.
- * This server is intentionally minimal to satisfy the requirement of using
- * raw sockets instead of a web framework.
+ * Minimal socket server implementing the HTTP-inspired protocol for file
+ * synchronisation. It supports upload, download, delete, listFiles and sync
+ * commands without using a web framework.
  */
 public class SocketFileServer implements Runnable {
     private final int port;
@@ -40,8 +42,10 @@ public class SocketFileServer implements Runnable {
     }
 
     private void handleClient(Socket socket) {
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
-             OutputStream out = socket.getOutputStream()) {
+        try {
+            InputStream rawIn = socket.getInputStream();
+            BufferedReader reader = new BufferedReader(new InputStreamReader(rawIn, StandardCharsets.UTF_8));
+            OutputStream out = socket.getOutputStream();
 
             String startLine = reader.readLine();
             if (startLine == null) return;
@@ -55,11 +59,17 @@ public class SocketFileServer implements Runnable {
             }
 
             if (startLine.startsWith("POST /upload")) {
-                handleUpload(reader, out, headers);
+                handleUpload(rawIn, out, headers);
             } else if (startLine.startsWith("GET /download")) {
-                handleDownload(out, startLine, headers);
+                handleDownload(out, startLine);
+            } else if (startLine.startsWith("DELETE /delete")) {
+                handleDelete(out, startLine);
+            } else if (startLine.startsWith("POST /listFiles")) {
+                handleListFiles(out);
+            } else if (startLine.startsWith("POST /sync")) {
+                handleSync(out);
             } else {
-                writeStatus(out, "400 Bad Request", "Unknown command");
+                writeStatus(out, 400, "Bad Request", "Unknown command");
             }
         } catch (IOException e) {
             System.err.println("Client error: " + e.getMessage());
@@ -68,65 +78,97 @@ public class SocketFileServer implements Runnable {
         }
     }
 
-    private void handleUpload(BufferedReader reader, OutputStream out, Map<String, String> headers) throws IOException {
+    private void handleUpload(InputStream in, OutputStream out, Map<String, String> headers) throws IOException {
         String lengthStr = headers.get("Content-Length");
         String disposition = headers.get("Content-Disposition");
+        String checksumHeader = headers.get("Checksum");
         if (lengthStr == null || disposition == null) {
-            writeStatus(out, "400 Bad Request", "Missing headers");
+            writeStatus(out, 400, "Bad Request", "Missing headers");
             return;
         }
         long length = Long.parseLong(lengthStr);
         String fileName = extractFileName(disposition);
         if (fileName == null) {
-            writeStatus(out, "400 Bad Request", "No filename");
+            writeStatus(out, 400, "Bad Request", "No filename");
             return;
         }
-        char[] buf = new char[(int) length];
-        int read = 0;
-        while (read < length) {
-            int r = reader.read(buf, read, (int) (length - read));
-            if (r == -1) break;
-            read += r;
-        }
-        byte[] data = new String(buf, 0, read).getBytes(StandardCharsets.ISO_8859_1);
         try {
-            fileManager.saveFileBytes(fileName, data);
-            writeStatus(out, "200 OK", "uploaded");
+            String actual = fileManager.saveFileStream(fileName, in, length, checksumHeader);
+            writeStatus(out, 200, "OK", "uploaded");
+            out.write(("Checksum: " + actual + "\r\n\r\n").getBytes(StandardCharsets.UTF_8));
         } catch (Exception e) {
-            writeStatus(out, "500 Internal Server Error", e.getMessage());
+            writeStatus(out, 500, "Internal Server Error", e.getMessage());
         }
     }
 
-    private void handleDownload(OutputStream out, String startLine, Map<String, String> headers) throws IOException {
+    private void handleDownload(OutputStream out, String startLine) throws IOException {
         int idx = startLine.indexOf("file=");
         if (idx == -1) {
-            writeStatus(out, "400 Bad Request", "Missing file parameter");
+            writeStatus(out, 400, "Bad Request", "Missing file parameter");
             return;
         }
         String fileName = startLine.substring(idx + 5).trim();
         try {
             byte[] data = fileManager.getFile(fileName);
             if (data == null) {
-                writeStatus(out, "404 Not Found", "no file");
+                writeStatus(out, 404, "Not Found", "no file");
                 return;
             }
             String checksum = fileManager.getFileChecksum(fileName);
             StringBuilder sb = new StringBuilder();
-            sb.append("200 OK\n");
-            sb.append("Content-Length: ").append(data.length).append('\n');
-            sb.append("Content-Disposition: attachment; filename=\"").append(fileName).append("\"\n");
-            if (checksum != null) sb.append("Checksum: ").append(checksum).append('\n');
-            sb.append('\n');
+            sb.append("HTTP/1.1 200 OK\r\n");
+            sb.append("Content-Length: ").append(data.length).append("\r\n");
+            sb.append("Content-Disposition: attachment; filename=\"").append(fileName).append("\"\r\n");
+            if (checksum != null) sb.append("Checksum: ").append(checksum).append("\r\n");
+            sb.append("\r\n");
             out.write(sb.toString().getBytes(StandardCharsets.UTF_8));
             out.write(data);
         } catch (Exception e) {
-            writeStatus(out, "500 Internal Server Error", e.getMessage());
+            writeStatus(out, 500, "Internal Server Error", e.getMessage());
         }
     }
 
-    private void writeStatus(OutputStream out, String status, String msg) throws IOException {
-        String resp = status + "\n" + "Message: " + msg + "\n\n";
-        out.write(resp.getBytes(StandardCharsets.UTF_8));
+    private void handleDelete(OutputStream out, String startLine) throws IOException {
+        int idx = startLine.indexOf("file=");
+        if (idx == -1) {
+            writeStatus(out, 400, "Bad Request", "Missing file parameter");
+            return;
+        }
+        String fileName = startLine.substring(idx + 5).trim();
+        try {
+            fileManager.deleteFile(fileName);
+            writeStatus(out, 200, "OK", "deleted");
+        } catch (Exception e) {
+            writeStatus(out, 500, "Internal Server Error", e.getMessage());
+        }
+    }
+
+    private void handleListFiles(OutputStream out) throws IOException {
+        try {
+            List<String> files = fileManager.listFiles();
+            String body = String.join("\n", files);
+            StringBuilder sb = new StringBuilder();
+            sb.append("HTTP/1.1 200 OK\r\n");
+            sb.append("Content-Length: ").append(body.getBytes(StandardCharsets.UTF_8).length).append("\r\n\r\n");
+            sb.append(body);
+            out.write(sb.toString().getBytes(StandardCharsets.UTF_8));
+        } catch (Exception e) {
+            writeStatus(out, 500, "Internal Server Error", e.getMessage());
+        }
+    }
+
+    private void handleSync(OutputStream out) throws IOException {
+        writeStatus(out, 200, "OK", "sync not implemented");
+    }
+
+    private void writeStatus(OutputStream out, int code, String text, String msg) throws IOException {
+        StringBuilder sb = new StringBuilder();
+        sb.append("HTTP/1.1 ").append(code).append(' ').append(text).append("\r\n");
+        if (msg != null && !msg.isEmpty()) {
+            sb.append("Message: ").append(msg).append("\r\n");
+        }
+        sb.append("\r\n");
+        out.write(sb.toString().getBytes(StandardCharsets.UTF_8));
     }
 
     private String extractFileName(String disposition) {

@@ -7,6 +7,7 @@ import org.mockito.Mockito;
 import org.soprasteria.avans.lockercloud.service.FileManagerService;
 
 import java.io.IOException;
+import java.io.InputStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -34,13 +35,13 @@ class SocketFileServerTest {
     @Test
     void uploadAndDownload_flow() throws Exception {
         byte[] data = "hello".getBytes();
-        doNothing().when(fileManager).saveFileBytes("test.txt", data);
+        when(fileManager.saveFileStream(eq("test.txt"), any(InputStream.class), eq((long) data.length), eq("abc"))).thenReturn("abc");
         when(fileManager.getFile("test.txt")).thenReturn(data);
         when(fileManager.getFileChecksum("test.txt")).thenReturn("abc");
 
         try (SocketFileClient client = new SocketFileClient("localhost", 9090)) {
             String status = client.upload("test.txt", data);
-            assertTrue(status.startsWith("200"));
+            assertTrue(status.contains("200"));
 
             byte[] dl = client.download("test.txt");
             assertArrayEquals(data, dl);
