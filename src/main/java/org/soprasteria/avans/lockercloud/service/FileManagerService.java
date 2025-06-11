@@ -90,6 +90,23 @@ public class FileManagerService {
         saveFile(file);
     }
 
+    /**
+     * Save raw bytes from the socket server. This bypasses MultipartFile so we
+     * can use the same storage logic without requiring web frameworks.
+     */
+    public void saveFileBytes(String fileName, byte[] data) {
+        if (fileName == null || fileName.trim().isEmpty()) {
+            throw new FileStorageException("File name cannot be null or empty.");
+        }
+        String normalized = Paths.get(fileName).getFileName().toString();
+        Path targetLocation = storageLocation.resolve(normalized);
+        try {
+            Files.write(targetLocation, data, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+        } catch (IOException e) {
+            throw new FileStorageException("Error saving file " + normalized, e);
+        }
+    }
+
     @Recover
     public void recoverSaveFile(IOException e, MultipartFile file) { // Corrected signature
         String fileName = file.getOriginalFilename();
