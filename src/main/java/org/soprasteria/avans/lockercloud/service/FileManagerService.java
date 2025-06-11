@@ -76,6 +76,14 @@ public class FileManagerService {
     }
 
     /**
+     * Convenience overload used by older tests which don't provide a checksum.
+     */
+    @Retryable(retryFor = { IOException.class }, maxAttempts = 3, backoff = @Backoff(delay = 2000))
+    public void saveFileWithRetry(MultipartFile file) {
+        saveFile(file, null);
+    }
+
+    /**
      * Save raw data from an InputStream. This simplified method is used by the
      * SSL socket server where uploads are handled without a Multipart request.
      */
