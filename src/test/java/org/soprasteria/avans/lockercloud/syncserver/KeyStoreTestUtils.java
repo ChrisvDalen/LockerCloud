@@ -1,38 +1,43 @@
 package org.soprasteria.avans.lockercloud.syncserver;
 
-import sun.security.tools.keytool.CertAndKeyGen;
-import sun.security.x509.X500Name;
-
-import java.io.OutputStream;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.KeyStore;
-import java.security.cert.Certificate;
-import java.security.cert.X509Certificate;
+import java.util.concurrent.TimeUnit;
 
-/** Utility class for generating an in-memory keystore for SSL tests. */
+/** Utility class for generating a temporary keystore for SSL tests without
+ *  relying on internal JDK APIs. */
 public final class KeyStoreTestUtils {
     private KeyStoreTestUtils() {}
 
     /**
-     * Creates a temporary JKS keystore containing a single self-signed certificate.
+     * Creates a temporary JKS keystore with a single self-signed certificate
+     * using the {@code keytool} command line utility.
      *
      * @param password the password for the keystore
-     * @return path to the created keystore file
+     * @return the path to the generated keystore
      */
     public static Path createTempKeyStore(String password) throws Exception {
         Path file = Files.createTempFile("test-keystore", ".jks");
-
-        CertAndKeyGen gen = new CertAndKeyGen("RSA", "SHA256withRSA");
-        gen.generate(2048);
-        X509Certificate cert = gen.getSelfCertificate(new X500Name("CN=Test"), 365 * 24L * 60L * 60L);
-
-        KeyStore ks = KeyStore.getInstance("JKS");
-        ks.load(null, null);
-        ks.setKeyEntry("alias", gen.getPrivateKey(), password.toCharArray(), new Certificate[]{cert});
-
-        try (OutputStream out = Files.newOutputStream(file)) {
-            ks.store(out, password.toCharArray());
+        ProcessBuilder pb = new ProcessBuilder(
+                "keytool",
+                "-genkeypair",
+                "-alias", "alias",
+                "-dname", "CN=Test",
+                "-keyalg", "RSA",
+                "-keysize", "2048",
+                "-validity", "365",
+                "-storetype", "JKS",
+                "-keystore", file.toString(),
+                "-storepass", password,
+                "-keypass", password,
+                "-noprompt"
+        );
+        pb.redirectOutput(ProcessBuilder.Redirect.DISCARD);
+        pb.redirectError(ProcessBuilder.Redirect.DISCARD);
+        Process process = pb.start();
+        if (!process.waitFor(10, TimeUnit.SECONDS) || process.exitValue() != 0) {
+            throw new IOException("keytool execution failed with code " + process.exitValue());
         }
         return file;
     }
