@@ -73,6 +73,15 @@ public class FileController {
     @ApiResponse(responseCode = "400", description = "Error downloading file")
     @GetMapping("/download")
     public ResponseEntity<byte[]> downloadFile(@RequestParam("file") String fileName) {
+        return doDownload(fileName);
+    }
+
+    @GetMapping("/download/{fileName}")
+    public ResponseEntity<byte[]> downloadFilePath(@PathVariable String fileName) {
+        return doDownload(fileName);
+    }
+
+    private ResponseEntity<byte[]> doDownload(String fileName) {
         try {
             byte[] fileData = fileManagerService.getFile(fileName);
             String checksum = fileManagerService.getFileChecksum(fileName);
@@ -124,8 +133,13 @@ public class FileController {
     @Operation(summary = "Delete a file", description = "Deletes a file from the server")
     @ApiResponse(responseCode = "200", description = "File deleted successfully")
     @ApiResponse(responseCode = "400", description = "Error deleting file")
-    @DeleteMapping("/delete")
-    public ResponseEntity<String> deleteFile(@RequestParam("fileName") String fileName) {
+    @RequestMapping(value = "/delete", method = {RequestMethod.DELETE, RequestMethod.GET})
+    public ResponseEntity<String> deleteFile(
+            @RequestParam(value = "file", required = false) String file,
+            @RequestParam(value = "fileName", required = false) String fileName) {
+        if (fileName == null || fileName.isEmpty()) {
+            fileName = file;
+        }
         try {
             fileManagerService.deleteFile(fileName);
             return ResponseEntity.ok("File deleted successfully");
