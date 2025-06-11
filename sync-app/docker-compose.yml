@@ -1,0 +1,23 @@
+version: '3.8'
+services:
+  sync-server:
+    image: eclipse-temurin:17
+    working_dir: /app
+    volumes:
+      - ./sync-server/target/sync-server-1.0-SNAPSHOT.jar:/app/server.jar
+      - storage:/app/storage
+    command: ["java", "-jar", "server.jar"]
+    ports:
+      - "8080:8080"
+
+  sync-ui:
+    image: node:20
+    working_dir: /app
+    volumes:
+      - ../sync-ui:/app
+    command: sh -c "npm install && npm start"
+    ports:
+      - "4200:4200"
+
+volumes:
+  storage:

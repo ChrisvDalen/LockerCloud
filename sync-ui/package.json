@@ -1,0 +1,14 @@
+{
+  "name": "sync-ui",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "ng serve",
+    "build": "ng build --prod"
+  },
+  "dependencies": {
+    "@angular/core": "^17.0.0",
+    "@angular/common": "^17.0.0",
+    "@angular/cli": "^17.0.0",
+    "rxjs": "^7.8.0"
+  }
+}
