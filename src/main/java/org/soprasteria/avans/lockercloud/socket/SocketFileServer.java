@@ -39,6 +39,8 @@ public class SocketFileServer implements Runnable {
             while (running) {
                 Socket socket = serverSocket.accept();
                 log.debug("Accepted connection from {}", socket.getRemoteSocketAddress());
+                socket.setReceiveBufferSize(64 * 1024);
+                socket.setSendBufferSize(64 * 1024);
                 new Thread(() -> handleClient(socket)).start();
             }
         } catch (IOException e) {
@@ -48,9 +50,9 @@ public class SocketFileServer implements Runnable {
 
     private void handleClient(Socket socket) {
         try {
-            InputStream rawIn = socket.getInputStream();
+            InputStream rawIn = new BufferedInputStream(socket.getInputStream(), 64 * 1024);
             BufferedReader reader = new BufferedReader(new InputStreamReader(rawIn, StandardCharsets.UTF_8));
-            OutputStream out = socket.getOutputStream();
+            OutputStream out = new BufferedOutputStream(socket.getOutputStream(), 64 * 1024);
 
             String startLine = reader.readLine();
             if (startLine == null) return;
@@ -103,6 +105,7 @@ public class SocketFileServer implements Runnable {
             String actual = fileManager.saveFileStream(fileName, in, length, checksumHeader);
             writeStatus(out, 200, "OK", "uploaded");
             out.write(("Checksum: " + actual + "\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+            out.flush();
             log.debug("Upload complete for {}", fileName);
         } catch (Exception e) {
             log.error("Upload failed for {}", fileName, e);
@@ -133,6 +136,7 @@ public class SocketFileServer implements Runnable {
             sb.append("\r\n");
             out.write(sb.toString().getBytes(StandardCharsets.UTF_8));
             out.write(data);
+            out.flush();
             log.debug("Download complete for {}", fileName);
         } catch (Exception e) {
             log.error("Download failed for {}", fileName, e);
@@ -187,6 +191,7 @@ public class SocketFileServer implements Runnable {
         }
         sb.append("\r\n");
         out.write(sb.toString().getBytes(StandardCharsets.UTF_8));
+        out.flush();
     }
 
     private String extractFileName(String disposition) {
