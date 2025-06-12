@@ -43,8 +43,9 @@ class SocketFileServerTest {
             String status = client.upload("test.txt", data);
             assertTrue(status.contains("200"));
 
-            byte[] dl = client.download("test.txt");
-            assertArrayEquals(data, dl);
+            SocketFileClient.DownloadResult dl = client.download("test.txt");
+            assertArrayEquals(data, dl.data);
+            assertEquals("abc", dl.checksum);
         }
     }
 }

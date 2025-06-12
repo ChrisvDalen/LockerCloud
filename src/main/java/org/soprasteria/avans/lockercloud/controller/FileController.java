@@ -50,12 +50,6 @@ public class FileController {
         this.socketPort = socketPort;
     }
 
-    // Constructor for tests
-    FileController(FileManagerService fileManagerService, String socketHost, int socketPort) {
-        this.fileManagerService = fileManagerService;
-        this.socketHost = socketHost;
-        this.socketPort = socketPort;
-    }
 
     @GetMapping("/")
     public String index() {
