@@ -120,6 +120,10 @@ public class SocketFileServer implements Runnable {
             return;
         }
         String fileName = startLine.substring(idx + 5).trim();
+        int spaceIdx = fileName.indexOf(' ');
+        if (spaceIdx > 0) {
+            fileName = fileName.substring(0, spaceIdx);
+        }
         try {
             log.info("Downloading {}", fileName);
             byte[] data = fileManager.getFile(fileName);
@@ -151,6 +155,10 @@ public class SocketFileServer implements Runnable {
             return;
         }
         String fileName = startLine.substring(idx + 5).trim();
+        int spaceIdx = fileName.indexOf(' ');
+        if (spaceIdx > 0) {
+            fileName = fileName.substring(0, spaceIdx);
+        }
         try {
             log.info("Deleting {}", fileName);
             fileManager.deleteFile(fileName);
