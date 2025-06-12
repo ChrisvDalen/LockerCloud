@@ -2,6 +2,7 @@ package org.soprasteria.avans.lockercloud.controller;
 
 import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.*;
 import org.springframework.http.*;
@@ -10,6 +11,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.soprasteria.avans.lockercloud.dto.SyncResult;
 import org.soprasteria.avans.lockercloud.model.FileMetadata;
 import org.soprasteria.avans.lockercloud.service.FileManagerService;
+import org.soprasteria.avans.lockercloud.socket.SocketFileServer;
 
 import java.io.*;
 import java.util.*;
@@ -22,12 +24,23 @@ class FileControllerTest {
     @Mock
     private FileManagerService fileManagerService;
 
-    @InjectMocks
     private FileController controller;
+    private SocketFileServer server;
+    private Thread serverThread;
 
     @BeforeEach
     void setup() {
         MockitoAnnotations.openMocks(this);
+        server = new SocketFileServer(9091, fileManagerService);
+        serverThread = new Thread(server);
+        serverThread.start();
+        controller = new FileController(fileManagerService, "localhost", 9091);
+    }
+
+    @AfterEach
+    void tearDown() throws InterruptedException {
+        server.stop();
+        serverThread.join(200);
     }
 
     @Test
@@ -36,26 +49,29 @@ class FileControllerTest {
     }
 
     @Test
-    void uploadFile_success() {
+    void uploadFile_success() throws Exception {
         MultipartFile file = new MockMultipartFile("file", "test.txt", "text/plain", "data".getBytes());
+        when(fileManagerService.saveFileStream(eq("test.txt"), any(InputStream.class), eq(4L), any()))
+                .thenReturn("abcd");
 
         ResponseEntity<Map<String, String>> resp = controller.uploadFile(file, null);
 
         assertEquals(HttpStatus.OK, resp.getStatusCode());
-        assertEquals("ok", resp.getBody().get("status"));
-        verify(fileManagerService).saveFileWithRetry(file);
+        assertTrue(resp.getBody().get("status").contains("200"));
+        verify(fileManagerService).saveFileStream(eq("test.txt"), any(InputStream.class), eq(4L), any());
     }
 
     @Test
     void uploadFile_error() {
         MultipartFile file = new MockMultipartFile("file", "bad.txt", "text/plain", "data".getBytes());
-        doThrow(new RuntimeException("oops")).when(fileManagerService).saveFileWithRetry(file);
+        when(fileManagerService.saveFileStream(eq("bad.txt"), any(InputStream.class), eq(4L), any()))
+                .thenThrow(new RuntimeException("oops"));
 
         ResponseEntity<Map<String, String>> resp = controller.uploadFile(file, null);
 
         assertEquals(HttpStatus.BAD_REQUEST, resp.getStatusCode());
         assertEquals("oops", resp.getBody().get("error"));
-        verify(fileManagerService).saveFileWithRetry(file);
+        verify(fileManagerService).saveFileStream(eq("bad.txt"), any(InputStream.class), eq(4L), any());
     }
 
     @Test
@@ -72,6 +88,8 @@ class FileControllerTest {
         assertEquals(String.valueOf(data.length), resp.getHeaders().getFirst(HttpHeaders.CONTENT_LENGTH));
         assertEquals(MediaType.APPLICATION_OCTET_STREAM, resp.getHeaders().getContentType());
         assertArrayEquals(data, resp.getBody());
+        verify(fileManagerService).getFile("f.bin");
+        verify(fileManagerService).getFileChecksum("f.bin");
     }
 
     @Test
@@ -82,6 +100,7 @@ class FileControllerTest {
 
         assertEquals(HttpStatus.BAD_REQUEST, resp.getStatusCode());
         assertNull(resp.getBody());
+        verify(fileManagerService).getFile("x");
     }
 
     @Test
@@ -173,6 +192,7 @@ class FileControllerTest {
 
         assertEquals(HttpStatus.OK, resp.getStatusCode());
         assertEquals("File deleted successfully", resp.getBody());
+        verify(fileManagerService).deleteFile("f");
     }
 
     @Test
@@ -183,6 +203,7 @@ class FileControllerTest {
 
         assertEquals(HttpStatus.BAD_REQUEST, resp.getStatusCode());
         assertEquals("Error deleting file: fail del", resp.getBody());
+        verify(fileManagerService).deleteFile("f");
     }
 
     @Test

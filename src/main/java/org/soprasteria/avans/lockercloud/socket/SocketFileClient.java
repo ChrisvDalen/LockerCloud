@@ -8,11 +8,15 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * Very small client helper for tests/demos. It speaks the same simple protocol
  * as {@link SocketFileServer}.
  */
 public class SocketFileClient implements Closeable {
+    private static final Logger log = LoggerFactory.getLogger(SocketFileClient.class);
     private final String host;
     private final int port;
     private Socket socket;
@@ -26,6 +30,7 @@ public class SocketFileClient implements Closeable {
     }
 
     private void connect() throws IOException {
+        log.debug("Connecting to {}:{}", host, port);
         socket = new Socket(host, port);
         in = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
         out = socket.getOutputStream();
@@ -34,6 +39,7 @@ public class SocketFileClient implements Closeable {
     public String upload(String fileName, byte[] data) throws IOException {
         String checksum = md5Hex(data);
         for (int attempt = 0; attempt < 3; attempt++) {
+            log.debug("Uploading {} attempt {}", fileName, attempt + 1);
             StringBuilder req = new StringBuilder();
             req.append("POST /upload HTTP/1.1\n");
             req.append("Content-Length: ").append(data.length).append('\n');
@@ -46,13 +52,15 @@ public class SocketFileClient implements Closeable {
 
             Response resp = readResponse();
             if (resp.code == 200 && checksum.equalsIgnoreCase(resp.headers.getOrDefault("Checksum", checksum))) {
+                log.debug("Upload of {} successful", fileName);
                 return resp.statusLine;
             }
         }
         throw new IOException("Failed to upload after retries");
     }
 
-    public byte[] download(String fileName) throws IOException {
+    public DownloadResult download(String fileName) throws IOException {
+        log.debug("Downloading {}", fileName);
         String req = "GET /download?file=" + fileName + " HTTP/1.1\n\n";
         out.write(req.getBytes(StandardCharsets.UTF_8));
         out.flush();
@@ -66,10 +74,14 @@ public class SocketFileClient implements Closeable {
         if (checksum != null && !checksum.equalsIgnoreCase(md5Hex(buf))) {
             throw new IOException("Checksum mismatch on download");
         }
-        return buf;
+        DownloadResult result = new DownloadResult();
+        result.data = buf;
+        result.checksum = checksum;
+        return result;
     }
 
     public String delete(String fileName) throws IOException {
+        log.debug("Deleting {}", fileName);
         String req = "DELETE /delete?file=" + fileName + " HTTP/1.1\n\n";
         out.write(req.getBytes(StandardCharsets.UTF_8));
         out.flush();
@@ -78,6 +90,7 @@ public class SocketFileClient implements Closeable {
     }
 
     public String listFiles() throws IOException {
+        log.debug("Listing files");
         String req = "POST /listFiles HTTP/1.1\n\n";
         out.write(req.getBytes(StandardCharsets.UTF_8));
         out.flush();
@@ -95,6 +108,7 @@ public class SocketFileClient implements Closeable {
     }
 
     public String sync() throws IOException {
+        log.debug("Sync request");
         String req = "POST /sync HTTP/1.1\n\n";
         out.write(req.getBytes(StandardCharsets.UTF_8));
         out.flush();
@@ -124,6 +138,11 @@ public class SocketFileClient implements Closeable {
         r.code = code;
         r.headers = headers;
         return r;
+    }
+
+    public static class DownloadResult {
+        public byte[] data;
+        public String checksum;
     }
 
     private static class Response {
