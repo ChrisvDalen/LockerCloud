@@ -8,6 +8,8 @@ import org.mockito.*;
 import org.springframework.http.*;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+import org.springframework.web.servlet.mvc.support.RedirectAttributesModelMap;
 import org.soprasteria.avans.lockercloud.dto.SyncResult;
 import org.soprasteria.avans.lockercloud.model.FileMetadata;
 import org.soprasteria.avans.lockercloud.service.FileManagerService;
@@ -53,11 +55,12 @@ class FileControllerTest {
         MultipartFile file = new MockMultipartFile("file", "test.txt", "text/plain", "data".getBytes());
         when(fileManagerService.saveFileStream(eq("test.txt"), any(InputStream.class), eq(4L), any()))
                 .thenReturn("abcd");
+        RedirectAttributes attrs = new RedirectAttributesModelMap();
 
-        ResponseEntity<Map<String, String>> resp = controller.uploadFile(file, null);
+        String view = controller.uploadFile(file, attrs, null);
 
-        assertEquals(HttpStatus.OK, resp.getStatusCode());
-        assertTrue(resp.getBody().get("status").contains("200"));
+        assertEquals("redirect:/", view);
+        assertEquals("Bestand test.txt succesvol geüpload!", attrs.getFlashAttributes().get("uploadSuccess"));
         verify(fileManagerService).saveFileStream(eq("test.txt"), any(InputStream.class), eq(4L), any());
     }
 
@@ -66,11 +69,12 @@ class FileControllerTest {
         MultipartFile file = new MockMultipartFile("file", "bad.txt", "text/plain", "data".getBytes());
         when(fileManagerService.saveFileStream(eq("bad.txt"), any(InputStream.class), eq(4L), any()))
                 .thenThrow(new RuntimeException("oops"));
+        RedirectAttributes attrs = new RedirectAttributesModelMap();
 
-        ResponseEntity<Map<String, String>> resp = controller.uploadFile(file, null);
+        String view = controller.uploadFile(file, attrs, null);
 
-        assertEquals(HttpStatus.BAD_REQUEST, resp.getStatusCode());
-        assertEquals("oops", resp.getBody().get("error"));
+        assertEquals("redirect:/", view);
+        assertEquals("Fout bij uploaden: oops", attrs.getFlashAttributes().get("uploadError"));
         verify(fileManagerService).saveFileStream(eq("bad.txt"), any(InputStream.class), eq(4L), any());
     }
 
