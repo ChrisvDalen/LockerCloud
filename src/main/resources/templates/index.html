@@ -131,12 +131,12 @@
                       class="btn btn-sm btn-success"
               >Download</a
               >
-              <a
-                      th:href="@{/api/files/delete(fileName=${file})}"
-                      class="btn btn-sm btn-danger"
-                      onclick="return confirm('Weet je zeker dat je dit bestand wilt verwijderen?');"
-              >Verwijderen</a
-              >
+                <a
+                        th:href="@{/api/files/delete(fileName=${file})}"
+                        class="btn btn-sm btn-danger delete-link"
+                        th:attr="data-file=${file}"
+                >Verwijderen</a
+                >
             </td>
           </tr>
         </tbody>
@@ -334,12 +334,12 @@
         }
     });
 
-    document.addEventListener('DOMContentLoaded', function() {
-        // Get the spinner element
-        const spinner = document.getElementById('loadingSpinner');
+      document.addEventListener('DOMContentLoaded', function() {
+          // Get the spinner element
+          const spinner = document.getElementById('loadingSpinner');
 
-        // Add event listeners to all individual download buttons
-        document.querySelectorAll('a[href^="/api/files/download"]').forEach(function(downloadLink) {
+          // Add event listeners to all individual download buttons
+          document.querySelectorAll('a[href^="/api/files/download"]').forEach(function(downloadLink) {
             downloadLink.addEventListener('click', function() {
                 // Show the spinner
                 spinner.style.display = 'flex';
@@ -352,9 +352,47 @@
                 setTimeout(function() {
                     spinner.style.display = 'none';
                 }, 1500);
-            });
-        });
-    });
+              });
+          });
+
+          // Add event listeners to all delete buttons
+          document.querySelectorAll('a.delete-link').forEach(function(deleteLink) {
+              deleteLink.addEventListener('click', function(e) {
+                  e.preventDefault();
+                  if (!confirm('Weet je zeker dat je dit bestand wilt verwijderen?')) {
+                      return;
+                  }
+
+                  spinner.style.display = 'flex';
+                  const msgEl = spinner.querySelector('span.ms-2');
+                  if (msgEl) msgEl.textContent = 'Bezig met verwijderen...';
+
+                  fetch(deleteLink.getAttribute('href'), { method: 'DELETE' })
+                      .then(res => {
+                          if (!res.ok) throw new Error('Verwijderen mislukt');
+                          return res.text();
+                      })
+                      .then(() => {
+                          showToast('Bestand verwijderd', true);
+                          const row = deleteLink.closest('tr');
+                          row && row.remove();
+                          const tbody = document.querySelector('table tbody');
+                          if (tbody && tbody.children.length === 0) {
+                              const info = document.querySelector('div.alert-info');
+                              if (info) info.style.display = 'block';
+                          }
+                      })
+                      .catch(err => {
+                          console.error(err);
+                          showToast(err.message, false);
+                      })
+                      .finally(() => {
+                          spinner.style.display = 'none';
+                          if (msgEl) msgEl.textContent = 'Alles wordt gedownload...';
+                      });
+              });
+          });
+      });
 </script>
 </body>
 </html>

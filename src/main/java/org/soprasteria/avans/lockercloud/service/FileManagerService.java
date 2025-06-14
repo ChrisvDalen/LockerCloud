@@ -25,9 +25,11 @@ import java.util.stream.Stream;
 @Service
 public class FileManagerService {
 
-    // Voor grote bestanden (demonstratie: 100 MB threshold, in productie 4GB)
-    private static final long CHUNK_THRESHOLD = 100 * 1024 * 1024; // 100 MB
+    // Voor grote bestanden (>4GB) wordt chunking toegepast
+    private static final long CHUNK_THRESHOLD = 4L * 1024 * 1024 * 1024; // 4 GB
     private static final long CHUNK_SIZE = 10 * 1024 * 1024; // 10 MB
+    // Vergroot buffer voor snellere socket transfers
+    private static final int BUFFER_SIZE = 64 * 1024; // 64 kB
 
     private final Path storageLocation = Paths.get("filestorage");
     // Simuleer de lokale client map (bijvoorbeeld een synchronisatie map op de client)
@@ -88,6 +90,139 @@ public class FileManagerService {
     @Retryable(value = { IOException.class }, maxAttempts = 3, backoff = @Backoff(delay = 2000))
     public void saveFileWithRetry(MultipartFile file) {
         saveFile(file);
+    }
+
+    /**
+     * Save raw bytes from the socket server. This bypasses MultipartFile so we
+     * can use the same storage logic without requiring web frameworks.
+     */
+    public void saveFileBytes(String fileName, byte[] data) {
+        if (fileName == null || fileName.trim().isEmpty()) {
+            throw new FileStorageException("File name cannot be null or empty.");
+        }
+        String normalized = Paths.get(fileName).getFileName().toString();
+        Path targetLocation = storageLocation.resolve(normalized);
+        try {
+            Files.write(targetLocation, data, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+        } catch (IOException e) {
+            throw new FileStorageException("Error saving file " + normalized, e);
+        }
+    }
+
+    /**
+     * Stream data from the given InputStream directly to disk. The stream will
+     * be read until {@code length} bytes have been consumed. The resulting file
+     * checksum is returned. When {@code expectedChecksum} is not {@code null},
+     * the written data is validated against it and an exception is thrown on
+     * mismatch.
+     */
+    public String saveFileStream(String fileName, InputStream in, long length, String expectedChecksum) {
+        if (fileName == null || fileName.trim().isEmpty()) {
+            throw new FileStorageException("File name cannot be null or empty.");
+        }
+
+        String normalized = Paths.get(fileName).getFileName().toString();
+
+        // For very large files, store chunks first and then combine them to avoid
+        // keeping data in memory. This mirrors the MultipartFile large file logic.
+        if (length > CHUNK_THRESHOLD) {
+            return saveLargeStream(normalized, in, length, expectedChecksum);
+        }
+
+        Path tempPath = storageLocation.resolve(normalized + ".tmp");
+        Path finalPath = storageLocation.resolve(normalized);
+
+        try (OutputStream os = Files.newOutputStream(tempPath,
+                StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+            MessageDigest md = MessageDigest.getInstance("MD5");
+            byte[] buffer = new byte[BUFFER_SIZE];
+            long remaining = length;
+            while (remaining > 0) {
+                int read = in.read(buffer, 0, (int) Math.min(buffer.length, remaining));
+                if (read == -1) {
+                    throw new IOException("Unexpected end of stream");
+                }
+                os.write(buffer, 0, read);
+                md.update(buffer, 0, read);
+                remaining -= read;
+            }
+            String checksum = bytesToHex(md.digest());
+            if (expectedChecksum != null && !checksum.equalsIgnoreCase(expectedChecksum)) {
+                Files.deleteIfExists(tempPath);
+                throw new FileStorageException("Checksum mismatch for file " + normalized);
+            }
+            Files.move(tempPath, finalPath, StandardCopyOption.REPLACE_EXISTING);
+            return checksum;
+        } catch (IOException | NoSuchAlgorithmException e) {
+            try {
+                Files.deleteIfExists(tempPath);
+            } catch (IOException ignored) {
+            }
+            throw new FileStorageException("Error saving file " + normalized, e);
+        }
+    }
+
+    private String saveLargeStream(String normalized, InputStream in, long length, String expectedChecksum) {
+        List<Path> chunks = new ArrayList<>();
+        MessageDigest md;
+        try {
+            md = MessageDigest.getInstance("MD5");
+        } catch (NoSuchAlgorithmException e) {
+            throw new FileStorageException("MD5 not available", e);
+        }
+
+        long remaining = length;
+        int chunkIndex = 1;
+        byte[] buffer = new byte[BUFFER_SIZE];
+        try {
+            while (remaining > 0) {
+                long chunkRemaining = Math.min(remaining, CHUNK_SIZE);
+                Path chunkPath = storageLocation.resolve(normalized + ".part" + chunkIndex++);
+                chunks.add(chunkPath);
+                try (OutputStream os = Files.newOutputStream(chunkPath,
+                        StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+                    long written = 0;
+                    while (written < chunkRemaining) {
+                        int read = in.read(buffer, 0, (int) Math.min(buffer.length, chunkRemaining - written));
+                        if (read == -1) {
+                            throw new IOException("Unexpected end of stream");
+                        }
+                        os.write(buffer, 0, read);
+                        md.update(buffer, 0, read);
+                        written += read;
+                        remaining -= read;
+                    }
+                }
+            }
+
+            String checksum = bytesToHex(md.digest());
+            if (expectedChecksum != null && !checksum.equalsIgnoreCase(expectedChecksum)) {
+                for (Path p : chunks) {
+                    Files.deleteIfExists(p);
+                }
+                throw new FileStorageException("Checksum mismatch for file " + normalized);
+            }
+
+            Path finalPath = storageLocation.resolve(normalized);
+            try (OutputStream finalOs = Files.newOutputStream(finalPath,
+                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+                for (Path chunk : chunks) {
+                    Files.copy(chunk, finalOs);
+                }
+            }
+            for (Path chunk : chunks) {
+                Files.deleteIfExists(chunk);
+            }
+            return checksum;
+        } catch (IOException e) {
+            for (Path chunk : chunks) {
+                try {
+                    Files.deleteIfExists(chunk);
+                } catch (IOException ignored) {
+                }
+            }
+            throw new FileStorageException("Error saving large file " + normalized, e);
+        }
     }
 
     @Recover
@@ -208,6 +343,26 @@ public class FileManagerService {
             } catch (IOException e) {
                 throw new FileStorageException("Error reading file chunks for " + normalizedFileName, e);
             }
+        }
+    }
+
+    /**
+     * Calculate and return the checksum for a stored file. Returns null when the
+     * file does not exist.
+     */
+    public String getFileChecksum(String fileName) {
+        if (fileName == null) {
+            return null;
+        }
+        String normalizedFileName = Paths.get(fileName).getFileName().toString();
+        Path filePath = storageLocation.resolve(normalizedFileName);
+        if (!Files.exists(filePath)) {
+            return null;
+        }
+        try {
+            return calculateChecksum(filePath);
+        } catch (IOException e) {
+            throw new FileStorageException("Error calculating checksum for " + normalizedFileName, e);
         }
     }
 
@@ -562,5 +717,13 @@ public class FileManagerService {
                            ", Conflicts: " + conflictFiles.size());
 
         return new SyncResult(successfullyCopiedToServer, successfullyCopiedToClient, conflictFiles);
+    }
+
+    private static String bytesToHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : bytes) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
     }
 }

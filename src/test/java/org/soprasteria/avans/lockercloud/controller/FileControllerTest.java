@@ -2,16 +2,16 @@ package org.soprasteria.avans.lockercloud.controller;
 
 import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.*;
 import org.springframework.http.*;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.web.servlet.mvc.support.RedirectAttributes;
-import org.springframework.web.servlet.mvc.support.RedirectAttributesModelMap;
 import org.soprasteria.avans.lockercloud.dto.SyncResult;
 import org.soprasteria.avans.lockercloud.model.FileMetadata;
 import org.soprasteria.avans.lockercloud.service.FileManagerService;
+import org.soprasteria.avans.lockercloud.socket.SocketFileServer;
 
 import java.io.*;
 import java.util.*;
@@ -24,12 +24,23 @@ class FileControllerTest {
     @Mock
     private FileManagerService fileManagerService;
 
-    @InjectMocks
     private FileController controller;
+    private SocketFileServer server;
+    private Thread serverThread;
 
     @BeforeEach
     void setup() {
         MockitoAnnotations.openMocks(this);
+        server = new SocketFileServer(9091, fileManagerService);
+        serverThread = new Thread(server);
+        serverThread.start();
+        controller = new FileController(fileManagerService, "localhost", 9091);
+    }
+
+    @AfterEach
+    void tearDown() throws InterruptedException {
+        server.stop();
+        serverThread.join(200);
     }
 
     @Test
@@ -40,52 +51,56 @@ class FileControllerTest {
     @Test
     void uploadFile_success() throws Exception {
         MultipartFile file = new MockMultipartFile("file", "test.txt", "text/plain", "data".getBytes());
-        RedirectAttributes attrs = new RedirectAttributesModelMap();
+        when(fileManagerService.saveFileStream(eq("test.txt"), any(InputStream.class), eq(4L), any()))
+                .thenReturn("abcd");
 
-        String view = controller.uploadFile(file, attrs);
+        ResponseEntity<Map<String, String>> resp = controller.uploadFile(file, null);
 
-        assertEquals("redirect:/", view);
-        assertTrue(attrs.getFlashAttributes().containsKey("uploadSuccess"));
-        assertEquals("Bestand test.txt succesvol geüpload!", attrs.getFlashAttributes().get("uploadSuccess"));
-        verify(fileManagerService).saveFileWithRetry(file);
+        assertEquals(HttpStatus.OK, resp.getStatusCode());
+        assertTrue(resp.getBody().get("status").contains("200"));
+        verify(fileManagerService).saveFileStream(eq("test.txt"), any(InputStream.class), eq(4L), any());
     }
 
     @Test
-    void uploadFile_error() throws Exception {
+    void uploadFile_error() {
         MultipartFile file = new MockMultipartFile("file", "bad.txt", "text/plain", "data".getBytes());
-        doThrow(new RuntimeException("oops")).when(fileManagerService).saveFileWithRetry(file);
-        RedirectAttributes attrs = new RedirectAttributesModelMap();
+        when(fileManagerService.saveFileStream(eq("bad.txt"), any(InputStream.class), eq(4L), any()))
+                .thenThrow(new RuntimeException("oops"));
 
-        String view = controller.uploadFile(file, attrs);
+        ResponseEntity<Map<String, String>> resp = controller.uploadFile(file, null);
 
-        assertEquals("redirect:/", view);
-        assertTrue(attrs.getFlashAttributes().containsKey("uploadError"));
-        assertEquals("Fout bij uploaden: oops", attrs.getFlashAttributes().get("uploadError"));
-        verify(fileManagerService).saveFileWithRetry(file);
+        assertEquals(HttpStatus.BAD_REQUEST, resp.getStatusCode());
+        assertEquals("oops", resp.getBody().get("error"));
+        verify(fileManagerService).saveFileStream(eq("bad.txt"), any(InputStream.class), eq(4L), any());
     }
 
     @Test
-    void downloadFile_success() throws Exception {
+    void downloadFile_success() {
         byte[] data = {1,2,3};
         when(fileManagerService.getFile("f.bin")).thenReturn(data);
+        when(fileManagerService.getFileChecksum("f.bin")).thenReturn("abc");
 
-        ResponseEntity<byte[]> resp = controller.downloadFile("f.bin");
+        ResponseEntity<byte[]> resp = controller.downloadFile("f.bin", null);
 
         assertEquals(HttpStatus.OK, resp.getStatusCode());
         assertEquals("attachment; filename=\"f.bin\"", resp.getHeaders().getFirst(HttpHeaders.CONTENT_DISPOSITION));
+        assertEquals("abc", resp.getHeaders().getFirst("Checksum"));
+        assertEquals(String.valueOf(data.length), resp.getHeaders().getFirst(HttpHeaders.CONTENT_LENGTH));
         assertEquals(MediaType.APPLICATION_OCTET_STREAM, resp.getHeaders().getContentType());
         assertArrayEquals(data, resp.getBody());
+        verify(fileManagerService).getFile("f.bin");
+        verify(fileManagerService).getFileChecksum("f.bin");
     }
 
     @Test
     void downloadFile_error() {
-        // throw unchecked to satisfy Mockito
         when(fileManagerService.getFile("x")).thenThrow(new RuntimeException("nf"));
 
-        ResponseEntity<byte[]> resp = controller.downloadFile("x");
+        ResponseEntity<byte[]> resp = controller.downloadFile("x", null);
 
         assertEquals(HttpStatus.BAD_REQUEST, resp.getStatusCode());
         assertNull(resp.getBody());
+        verify(fileManagerService).getFile("x");
     }
 
     @Test
@@ -173,20 +188,22 @@ class FileControllerTest {
     void deleteFile_success() throws Exception {
         doNothing().when(fileManagerService).deleteFile("f");
 
-        ResponseEntity<String> resp = controller.deleteFile("f");
+        ResponseEntity<String> resp = controller.deleteFile("f", null);
 
         assertEquals(HttpStatus.OK, resp.getStatusCode());
         assertEquals("File deleted successfully", resp.getBody());
+        verify(fileManagerService).deleteFile("f");
     }
 
     @Test
     void deleteFile_error() throws Exception {
         doThrow(new RuntimeException("fail del")).when(fileManagerService).deleteFile("f");
 
-        ResponseEntity<String> resp = controller.deleteFile("f");
+        ResponseEntity<String> resp = controller.deleteFile("f", null);
 
         assertEquals(HttpStatus.BAD_REQUEST, resp.getStatusCode());
         assertEquals("Error deleting file: fail del", resp.getBody());
+        verify(fileManagerService).deleteFile("f");
     }
 
     @Test
