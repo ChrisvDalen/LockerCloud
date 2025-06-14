@@ -7,7 +7,12 @@ import org.soprasteria.avans.lockercloud.dto.SyncResult;
 import org.soprasteria.avans.lockercloud.exception.FileStorageException;
 import org.soprasteria.avans.lockercloud.model.FileMetadata;
 import org.soprasteria.avans.lockercloud.service.FileManagerService;
+import org.soprasteria.avans.lockercloud.socket.SocketFileClient;
+import org.soprasteria.avans.lockercloud.socket.SocketFileClient.DownloadResult;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -30,12 +35,21 @@ import java.util.zip.ZipOutputStream;
 @Tag(name = "File Operations", description = "Endpoints for file upload, download, deletion, listing and synchronization")
 public class FileController {
 
+    private static final Logger log = LoggerFactory.getLogger(FileController.class);
+
     private final FileManagerService fileManagerService;
+    private final String socketHost;
+    private final int socketPort;
 
     @Autowired
-    public FileController(FileManagerService fileManagerService) {
+    public FileController(FileManagerService fileManagerService,
+                          @Value("${file.socket.host:localhost}") String socketHost,
+                          @Value("${file.socket.port:9090}") int socketPort) {
         this.fileManagerService = fileManagerService;
+        this.socketHost = socketHost;
+        this.socketPort = socketPort;
     }
+
 
     @GetMapping("/")
     public String index() {
@@ -50,19 +64,13 @@ public class FileController {
             @RequestParam("file") MultipartFile file,
             @RequestHeader(value = "Checksum", required = false) String checksum) {
         Map<String, String> resp = new HashMap<>();
-        try {
-            if (checksum != null) {
-                fileManagerService.saveFileTransactional(file, checksum);
-            } else {
-                fileManagerService.saveFileWithRetry(file);
-            }
-            resp.put("status", "ok");
-            String storedChecksum = fileManagerService.getFileChecksum(file.getOriginalFilename());
-            if (storedChecksum != null) {
-                resp.put("checksum", storedChecksum);
-            }
+        try (SocketFileClient client = new SocketFileClient(socketHost, socketPort)) {
+            log.info("Uploading {} via socket", file.getOriginalFilename());
+            String status = client.upload(file.getOriginalFilename(), file.getBytes());
+            resp.put("status", status);
             return ResponseEntity.ok(resp);
         } catch (Exception e) {
+            log.error("Socket upload failed", e);
             resp.put("error", e.getMessage());
             return ResponseEntity.badRequest().body(resp);
         }
@@ -87,16 +95,16 @@ public class FileController {
     }
 
     private ResponseEntity<byte[]> doDownload(String fileName) {
-        try {
-            byte[] fileData = fileManagerService.getFile(fileName);
-            String checksum = fileManagerService.getFileChecksum(fileName);
+        try (SocketFileClient client = new SocketFileClient(socketHost, socketPort)) {
+            DownloadResult result = client.download(fileName);
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileName + "\"")
-                    .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(fileData.length))
-                    .header("Checksum", checksum == null ? "" : checksum)
+                    .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(result.data.length))
+                    .header("Checksum", result.checksum == null ? "" : result.checksum)
                     .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                    .body(fileData);
+                    .body(result.data);
         } catch (Exception e) {
+            log.error("Download via socket failed", e);
             return ResponseEntity.badRequest().body(null);
         }
     }
@@ -155,10 +163,12 @@ public class FileController {
         if (fileName == null || fileName.isEmpty()) {
             fileName = file;
         }
-        try {
-            fileManagerService.deleteFile(fileName);
+        try (SocketFileClient client = new SocketFileClient(socketHost, socketPort)) {
+            log.info("Deleting {} via socket", fileName);
+            client.delete(fileName);
             return ResponseEntity.ok("File deleted successfully");
         } catch (Exception e) {
+            log.error("Delete via socket failed", e);
             return ResponseEntity.badRequest().body("Error deleting file: " + e.getMessage());
         }
     }

@@ -28,6 +28,8 @@ public class FileManagerService {
     // Voor grote bestanden (>4GB) wordt chunking toegepast
     private static final long CHUNK_THRESHOLD = 4L * 1024 * 1024 * 1024; // 4 GB
     private static final long CHUNK_SIZE = 10 * 1024 * 1024; // 10 MB
+    // Vergroot buffer voor snellere socket transfers
+    private static final int BUFFER_SIZE = 64 * 1024; // 64 kB
 
     private final Path storageLocation = Paths.get("filestorage");
     // Simuleer de lokale client map (bijvoorbeeld een synchronisatie map op de client)
@@ -133,7 +135,7 @@ public class FileManagerService {
         try (OutputStream os = Files.newOutputStream(tempPath,
                 StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
             MessageDigest md = MessageDigest.getInstance("MD5");
-            byte[] buffer = new byte[8192];
+            byte[] buffer = new byte[BUFFER_SIZE];
             long remaining = length;
             while (remaining > 0) {
                 int read = in.read(buffer, 0, (int) Math.min(buffer.length, remaining));
@@ -171,7 +173,7 @@ public class FileManagerService {
 
         long remaining = length;
         int chunkIndex = 1;
-        byte[] buffer = new byte[8192];
+        byte[] buffer = new byte[BUFFER_SIZE];
         try {
             while (remaining > 0) {
                 long chunkRemaining = Math.min(remaining, CHUNK_SIZE);
