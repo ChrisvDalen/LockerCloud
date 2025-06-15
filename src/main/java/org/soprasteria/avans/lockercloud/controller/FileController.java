@@ -19,6 +19,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayOutputStream;
@@ -60,20 +61,21 @@ public class FileController {
     @ApiResponse(responseCode = "200", description = "File uploaded successfully")
     @ApiResponse(responseCode = "400", description = "Error uploading file")
     @PostMapping("/upload")
-    public ResponseEntity<Map<String, String>> uploadFile(
+    public String uploadFile(
             @RequestParam("file") MultipartFile file,
+            RedirectAttributes redirectAttributes,
             @RequestHeader(value = "Checksum", required = false) String checksum) {
-        Map<String, String> resp = new HashMap<>();
         try (SocketFileClient client = new SocketFileClient(socketHost, socketPort)) {
             log.info("Uploading {} via socket", file.getOriginalFilename());
-            String status = client.upload(file.getOriginalFilename(), file.getBytes());
-            resp.put("status", status);
-            return ResponseEntity.ok(resp);
+            client.upload(file.getOriginalFilename(), file.getBytes());
+            redirectAttributes.addFlashAttribute("uploadSuccess",
+                    "Bestand " + file.getOriginalFilename() + " succesvol geüpload!");
         } catch (Exception e) {
             log.error("Socket upload failed", e);
-            resp.put("error", e.getMessage());
-            return ResponseEntity.badRequest().body(resp);
+            redirectAttributes.addFlashAttribute("uploadError",
+                    "Fout bij uploaden: " + e.getMessage());
         }
+        return "redirect:/";
     }
 
     @Operation(summary = "Download a file", description = "Downloads a file from the server")
