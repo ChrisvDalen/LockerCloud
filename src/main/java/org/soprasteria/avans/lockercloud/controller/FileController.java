@@ -190,7 +190,7 @@ public class FileController {
     public ResponseEntity<?> syncFiles(@RequestBody List<FileMetadata> clientFiles) {
         try {
             SyncResult result = fileManagerService.syncFiles(clientFiles);
-            if (!result.getConflictFiles().isEmpty()) {
+            if (result.getConflictFiles() != null && !result.getConflictFiles().isEmpty()) {
                 return ResponseEntity
                         .status(HttpStatus.CONFLICT)
                         .body(result);

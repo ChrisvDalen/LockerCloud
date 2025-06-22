@@ -42,7 +42,11 @@ public class SocketFileServer implements Runnable {
 
     @Override
     public void run() {
-        try (ServerSocket ss = new ServerSocket(port)) {
+        ServerSocket ss = null;
+        try {
+            ss = new ServerSocket();
+            ss.setReuseAddress(true);
+            ss.bind(new java.net.InetSocketAddress(port));
             this.serverSocket = ss;
             log.info("SocketFileServer started on port {}", port);
             while (running) {
@@ -54,6 +58,10 @@ public class SocketFileServer implements Runnable {
             }
         } catch (IOException e) {
             log.error("Socket server stopped", e);
+        } finally {
+            if (ss != null && !ss.isClosed()) {
+                try { ss.close(); } catch (IOException ignored) {}
+            }
         }
     }
 
