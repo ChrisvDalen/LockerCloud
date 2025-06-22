@@ -44,6 +44,7 @@ public class SocketFileClient implements Closeable {
             log.debug("Uploading {} attempt {}", fileName, attempt + 1);
             StringBuilder req = new StringBuilder();
             req.append("POST /upload HTTP/1.1\n");
+            req.append("Host: ").append(host).append('\n');
             req.append("Content-Length: ").append(data.length).append('\n');
             req.append("Content-Disposition: form-data; filename=\"").append(fileName).append("\"\n");
             req.append("Checksum: ").append(checksum).append('\n');
@@ -63,7 +64,8 @@ public class SocketFileClient implements Closeable {
 
     public DownloadResult download(String fileName) throws IOException {
         log.debug("Downloading {}", fileName);
-        String req = "GET /download?file=" + fileName + " HTTP/1.1\n\n";
+        String req = "GET /download?file=" + fileName + " HTTP/1.1\n" +
+                "Host: " + host + "\n\n";
         out.write(req.getBytes(StandardCharsets.UTF_8));
         out.flush();
         Response resp = readResponse();
@@ -84,7 +86,8 @@ public class SocketFileClient implements Closeable {
 
     public String delete(String fileName) throws IOException {
         log.debug("Deleting {}", fileName);
-        String req = "DELETE /delete?file=" + fileName + " HTTP/1.1\n\n";
+        String req = "DELETE /delete?file=" + fileName + " HTTP/1.1\n" +
+                "Host: " + host + "\n\n";
         out.write(req.getBytes(StandardCharsets.UTF_8));
         out.flush();
         Response resp = readResponse();
@@ -93,7 +96,8 @@ public class SocketFileClient implements Closeable {
 
     public String listFiles() throws IOException {
         log.debug("Listing files");
-        String req = "POST /listFiles HTTP/1.1\n\n";
+        String req = "POST /listFiles HTTP/1.1\n" +
+                "Host: " + host + "\n\n";
         out.write(req.getBytes(StandardCharsets.UTF_8));
         out.flush();
         Response resp = readResponse();
@@ -105,7 +109,8 @@ public class SocketFileClient implements Closeable {
 
     public String sync() throws IOException {
         log.debug("Sync request");
-        String req = "POST /sync HTTP/1.1\n\n";
+        String req = "POST /sync HTTP/1.1\n" +
+                "Host: " + host + "\n\n";
         out.write(req.getBytes(StandardCharsets.UTF_8));
         out.flush();
         Response resp = readResponse();

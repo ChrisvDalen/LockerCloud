@@ -1,6 +1,7 @@
 package org.soprasteria.avans.lockercloud.socket;
 
 import org.soprasteria.avans.lockercloud.service.FileManagerService;
+import org.soprasteria.avans.lockercloud.dto.SyncResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -187,8 +188,19 @@ public class SocketFileServer implements Runnable {
     }
 
     private void handleSync(OutputStream out) throws IOException {
-        log.info("Sync requested (not implemented)");
-        writeStatus(out, 200, "OK", "sync not implemented");
+        try {
+            log.info("Sync requested");
+            SyncResult result = fileManager.performServerSideLocalSync();
+            String msg = "sync completed";
+            if (result != null) {
+                msg = String.format("upload=%d, download=%d, conflicts=%d",
+                        result.getUploadCount(), result.getDownloadCount(), result.getConflictCount());
+            }
+            writeStatus(out, 200, "OK", msg);
+        } catch (Exception e) {
+            log.error("Sync failed", e);
+            writeStatus(out, 500, "Internal Server Error", e.getMessage());
+        }
     }
 
     private void writeStatus(OutputStream out, int code, String text, String msg) throws IOException {

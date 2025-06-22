@@ -4,6 +4,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.soprasteria.avans.lockercloud.dto.SyncResult;
 import org.soprasteria.avans.lockercloud.service.FileManagerService;
 
 import java.io.IOException;
@@ -47,5 +48,42 @@ class SocketFileServerTest {
             assertArrayEquals(data, dl.data);
             assertEquals("abc", dl.checksum);
         }
+    }
+
+    @Test
+    void listFiles_shouldReturnNames() throws Exception {
+        when(fileManager.listFiles()).thenReturn(java.util.List.of("a.txt", "b.bin"));
+
+        try (SocketFileClient client = new SocketFileClient("localhost", 9090)) {
+            String names = client.listFiles();
+            assertTrue(names.contains("a.txt"));
+            assertTrue(names.contains("b.bin"));
+        }
+
+        verify(fileManager).listFiles();
+    }
+
+    @Test
+    void delete_shouldInvokeService() throws Exception {
+        doNothing().when(fileManager).deleteFile("gone.txt");
+
+        try (SocketFileClient client = new SocketFileClient("localhost", 9090)) {
+            String status = client.delete("gone.txt");
+            assertTrue(status.contains("200"));
+        }
+
+        verify(fileManager).deleteFile("gone.txt");
+    }
+
+    @Test
+    void sync_shouldReturnStatus() throws Exception {
+        when(fileManager.performServerSideLocalSync()).thenReturn(new SyncResult(java.util.List.of(), java.util.List.of(), java.util.List.of()));
+
+        try (SocketFileClient client = new SocketFileClient("localhost", 9090)) {
+            String status = client.sync();
+            assertTrue(status.contains("200"));
+        }
+
+        verify(fileManager).performServerSideLocalSync();
     }
 }
