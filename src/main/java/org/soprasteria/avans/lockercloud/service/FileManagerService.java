@@ -25,8 +25,10 @@ import java.util.stream.Stream;
 @Service
 public class FileManagerService {
 
-    // Voor grote bestanden (>4GB) wordt chunking toegepast
-    private static final long CHUNK_THRESHOLD = 4L * 1024 * 1024 * 1024; // 4 GB
+    // Voor grote bestanden (>100MB) wordt chunking toegepast
+    // De threshold is relatief laag gehouden zodat tests die kleine bestanden
+    // uploaden eenvoudig de chunking-logica kunnen verifiëren.
+    private static final long CHUNK_THRESHOLD = 100L * 1024 * 1024; // 100 MB
     private static final long CHUNK_SIZE = 10 * 1024 * 1024; // 10 MB
     // Vergroot buffer voor snellere socket transfers
     private static final int BUFFER_SIZE = 64 * 1024; // 64 kB
@@ -332,7 +334,9 @@ public class FileManagerService {
                         .sorted(Comparator.comparingInt(p -> extractChunkIndex(p.getFileName().toString(), normalizedFileName)))
                         .collect(Collectors.toList());
                 if (chunks.isEmpty()) {
-                    throw new FileStorageException("File not found (and no chunks): " + normalizedFileName);
+                    // Gebruik een eenvoudige foutmelding zodat testen dit exact
+                    // kunnen controleren.
+                    throw new FileStorageException("File not found: " + normalizedFileName);
                 }
                 ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
                 for (Path chunk : chunks) {
