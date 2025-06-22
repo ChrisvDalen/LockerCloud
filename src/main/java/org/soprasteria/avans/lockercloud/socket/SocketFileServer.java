@@ -196,6 +196,7 @@ public class SocketFileServer implements Runnable {
             sb.append("Content-Length: ").append(body.getBytes(StandardCharsets.UTF_8).length).append("\r\n\r\n");
             sb.append(body);
             out.write(sb.toString().getBytes(StandardCharsets.UTF_8));
+            out.flush();
             log.debug("Returned {} file names", files.size());
         } catch (Exception e) {
             log.error("Listing files failed", e);

@@ -40,29 +40,25 @@ public class SocketFileClient implements Closeable {
 
     public String upload(String fileName, byte[] data) throws IOException {
         String checksum = md5Hex(data);
-        for (int attempt = 0; attempt < 3; attempt++) {
-            log.debug("Uploading {} attempt {}", fileName, attempt + 1);
-            StringBuilder req = new StringBuilder();
-            req.append("POST /upload HTTP/1.1\n");
-            req.append("Host: ").append(host).append('\n');
-            req.append("Content-Length: ").append(data.length).append('\n');
-            req.append("Content-Disposition: form-data; filename=\"").append(fileName).append("\"\n");
-            req.append("Checksum: ").append(checksum).append('\n');
-            req.append('\n');
-            out.write(req.toString().getBytes(StandardCharsets.UTF_8));
-            out.write(data);
-            out.flush();
+        log.debug("Uploading {}", fileName);
+        StringBuilder req = new StringBuilder();
+        req.append("POST /upload HTTP/1.1\n");
+        req.append("Host: ").append(host).append('\n');
+        req.append("Content-Length: ").append(data.length).append('\n');
+        req.append("Content-Disposition: form-data; filename=\"").append(fileName).append("\"\n");
+        req.append("Checksum: ").append(checksum).append('\n');
+        req.append('\n');
+        out.write(req.toString().getBytes(StandardCharsets.UTF_8));
+        out.write(data);
+        out.flush();
 
-            Response resp = readResponse();
-            // Older tests expect success purely based on the status code and do
-            // not require the returned checksum to match. Therefore we only
-            // check the HTTP status here.
-            if (resp.code == 200) {
-                log.debug("Upload of {} successful", fileName);
-                return resp.statusLine;
-            }
+        Response resp = readResponse();
+        if (resp.code == 200) {
+            log.debug("Upload of {} successful", fileName);
+            return resp.statusLine;
         }
-        throw new IOException("Failed to upload after retries");
+        String msg = resp.headers.getOrDefault("Message", resp.statusLine);
+        throw new IOException(msg);
     }
 
     public DownloadResult download(String fileName) throws IOException {
