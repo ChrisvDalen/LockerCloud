@@ -23,6 +23,7 @@ public class SocketFileServer implements Runnable {
     private final int port;
     private final FileManagerService fileManager;
     private volatile boolean running = true;
+    private ServerSocket serverSocket;
 
     public SocketFileServer(int port, FileManagerService fileManager) {
         this.port = port;
@@ -31,14 +32,21 @@ public class SocketFileServer implements Runnable {
 
     public void stop() {
         this.running = false;
+        if (serverSocket != null) {
+            try {
+                serverSocket.close();
+            } catch (IOException ignored) {
+            }
+        }
     }
 
     @Override
     public void run() {
-        try (ServerSocket serverSocket = new ServerSocket(port)) {
+        try (ServerSocket ss = new ServerSocket(port)) {
+            this.serverSocket = ss;
             log.info("SocketFileServer started on port {}", port);
             while (running) {
-                Socket socket = serverSocket.accept();
+                Socket socket = ss.accept();
                 log.debug("Accepted connection from {}", socket.getRemoteSocketAddress());
                 socket.setReceiveBufferSize(64 * 1024);
                 socket.setSendBufferSize(64 * 1024);
