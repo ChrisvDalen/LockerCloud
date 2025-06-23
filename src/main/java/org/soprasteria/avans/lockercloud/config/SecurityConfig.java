@@ -21,7 +21,7 @@ public class SecurityConfig {
                         // Overige endpoints (zoals /api/files/**) kunnen ook openbaar worden gemaakt als dat gewenst is
                         .requestMatchers("/api/files/**").permitAll()
                         // Alle andere requests vereisen authenticatie
-//                        .anyRequest().authenticated()
+                        .anyRequest().authenticated()
                 )
                 .httpBasic(Customizer.withDefaults());
         return http.build();

@@ -117,20 +117,16 @@ public class FileController {
     @GetMapping("/downloadAll")
     public ResponseEntity<byte[]> downloadAllFiles() {
         try {
-            List<String> filenames;
-            try {
-                filenames = fileManagerService.listFiles();
-            } catch (Exception e) {
-                System.err.println("Warning: could not list files: " + e.getMessage());
-                filenames = Collections.emptyList();
-            }
+            // Ophalen van de bestandslijst. Gaat dit mis dan melden we een 500-fout.
+            List<String> filenames = fileManagerService.listFiles();
+
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             try (ZipOutputStream zos = new ZipOutputStream(baos)) {
                 for (String name : filenames) {
                     try {
                         byte[] data = fileManagerService.getFile(name);
                         if (data == null) {
-                            System.err.println("Warning: File " + name + " could not be found or is empty.");
+                            // Sla lege bestanden over
                             continue;
                         }
                         ZipEntry entry = new ZipEntry(name);
@@ -138,17 +134,19 @@ public class FileController {
                         zos.write(data);
                         zos.closeEntry();
                     } catch (Exception ex) {
-                        System.err.println("Warning: Failed to add " + name + " to ZIP: " + ex.getMessage());
+                        // Fout bij het lezen van een bestand -> hele operatie mislukt
+                        throw ex;
                     }
                 }
             }
+
             byte[] zipBytes = baos.toByteArray();
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"all-files.zip\"")
                     .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(zipBytes.length))
                     .contentType(MediaType.parseMediaType("application/zip"))
                     .body(zipBytes);
-        } catch (IOException e) {
+        } catch (Exception e) {
             return ResponseEntity
                     .status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(null);
@@ -192,7 +190,7 @@ public class FileController {
     public ResponseEntity<?> syncFiles(@RequestBody List<FileMetadata> clientFiles) {
         try {
             SyncResult result = fileManagerService.syncFiles(clientFiles);
-            if (!result.getConflictFiles().isEmpty()) {
+            if (result.getConflictFiles() != null && !result.getConflictFiles().isEmpty()) {
                 return ResponseEntity
                         .status(HttpStatus.CONFLICT)
                         .body(result);
@@ -201,6 +199,10 @@ public class FileController {
         } catch (FileStorageException e) {
             return ResponseEntity
                     .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error syncing files: " + e.getMessage());
+        } catch (Exception e) {
+            return ResponseEntity
+                    .badRequest()
                     .body("Error syncing files: " + e.getMessage());
         }
     }
