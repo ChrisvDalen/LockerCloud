@@ -1,6 +1,7 @@
 package org.soprasteria.avans.lockercloud.socket;
 
 import org.soprasteria.avans.lockercloud.service.FileManagerService;
+import org.soprasteria.avans.lockercloud.dto.SyncResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -22,6 +23,7 @@ public class SocketFileServer implements Runnable {
     private final int port;
     private final FileManagerService fileManager;
     private volatile boolean running = true;
+    private ServerSocket serverSocket;
 
     public SocketFileServer(int port, FileManagerService fileManager) {
         this.port = port;
@@ -30,14 +32,25 @@ public class SocketFileServer implements Runnable {
 
     public void stop() {
         this.running = false;
+        if (serverSocket != null) {
+            try {
+                serverSocket.close();
+            } catch (IOException ignored) {
+            }
+        }
     }
 
     @Override
     public void run() {
-        try (ServerSocket serverSocket = new ServerSocket(port)) {
+        ServerSocket ss = null;
+        try {
+            ss = new ServerSocket();
+            ss.setReuseAddress(true);
+            ss.bind(new java.net.InetSocketAddress(port));
+            this.serverSocket = ss;
             log.info("SocketFileServer started on port {}", port);
             while (running) {
-                Socket socket = serverSocket.accept();
+                Socket socket = ss.accept();
                 log.debug("Accepted connection from {}", socket.getRemoteSocketAddress());
                 socket.setReceiveBufferSize(64 * 1024);
                 socket.setSendBufferSize(64 * 1024);
@@ -45,21 +58,24 @@ public class SocketFileServer implements Runnable {
             }
         } catch (IOException e) {
             log.error("Socket server stopped", e);
+        } finally {
+            if (ss != null && !ss.isClosed()) {
+                try { ss.close(); } catch (IOException ignored) {}
+            }
         }
     }
 
     private void handleClient(Socket socket) {
         try {
             InputStream rawIn = new BufferedInputStream(socket.getInputStream(), 64 * 1024);
-            BufferedReader reader = new BufferedReader(new InputStreamReader(rawIn, StandardCharsets.UTF_8));
             OutputStream out = new BufferedOutputStream(socket.getOutputStream(), 64 * 1024);
 
-            String startLine = reader.readLine();
+            String startLine = readLine(rawIn);
             if (startLine == null) return;
             log.debug("Request: {}", startLine);
             Map<String, String> headers = new HashMap<>();
             String line;
-            while ((line = reader.readLine()) != null && !line.isEmpty()) {
+            while ((line = readLine(rawIn)) != null && !line.isEmpty()) {
                 int idx = line.indexOf(':');
                 if (idx > 0) {
                     headers.put(line.substring(0, idx).trim(), line.substring(idx + 1).trim());
@@ -179,6 +195,7 @@ public class SocketFileServer implements Runnable {
             sb.append("Content-Length: ").append(body.getBytes(StandardCharsets.UTF_8).length).append("\r\n\r\n");
             sb.append(body);
             out.write(sb.toString().getBytes(StandardCharsets.UTF_8));
+            out.flush();
             log.debug("Returned {} file names", files.size());
         } catch (Exception e) {
             log.error("Listing files failed", e);
@@ -187,8 +204,19 @@ public class SocketFileServer implements Runnable {
     }
 
     private void handleSync(OutputStream out) throws IOException {
-        log.info("Sync requested (not implemented)");
-        writeStatus(out, 200, "OK", "sync not implemented");
+        try {
+            log.info("Sync requested");
+            SyncResult result = fileManager.performServerSideLocalSync();
+            String msg = "sync completed";
+            if (result != null) {
+                msg = String.format("upload=%d, download=%d, conflicts=%d",
+                        result.getUploadCount(), result.getDownloadCount(), result.getConflictCount());
+            }
+            writeStatus(out, 200, "OK", msg);
+        } catch (Exception e) {
+            log.error("Sync failed", e);
+            writeStatus(out, 500, "Internal Server Error", e.getMessage());
+        }
     }
 
     private void writeStatus(OutputStream out, int code, String text, String msg) throws IOException {
@@ -200,6 +228,23 @@ public class SocketFileServer implements Runnable {
         sb.append("\r\n");
         out.write(sb.toString().getBytes(StandardCharsets.UTF_8));
         out.flush();
+    }
+
+    private String readLine(InputStream in) throws IOException {
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        int b;
+        while ((b = in.read()) != -1) {
+            if (b == '\n') {
+                break;
+            }
+            if (b != '\r') {
+                bos.write(b);
+            }
+        }
+        if (b == -1 && bos.size() == 0) {
+            return null;
+        }
+        return bos.toString(StandardCharsets.UTF_8);
     }
 
     private String extractFileName(String disposition) {

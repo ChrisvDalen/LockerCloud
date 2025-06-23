@@ -318,21 +318,40 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // Get the upload form and spinner elements
-        const uploadForm = document.querySelector('form[enctype="multipart/form-data"]');
-        const spinner = document.getElementById('loadingSpinner');
+      const uploadForm = document.querySelector('form[enctype="multipart/form-data"]');
+      const spinner = document.getElementById('loadingSpinner');
+      if (uploadForm && spinner) {
+          uploadForm.addEventListener('submit', function(e) {
+              e.preventDefault(); // voorkom standaard submit
+              spinner.style.display = 'flex';
+              const msgEl = spinner.querySelector('span.ms-2');
+              if (msgEl) msgEl.textContent = 'Bezig met uploaden...';
 
-        if (uploadForm && spinner) {
-            uploadForm.addEventListener('submit', function() {
-                // Show the spinner
-                spinner.style.display = 'flex';
-
-                // Change loading text to indicate upload in progress
-                const msgEl = spinner.querySelector('span.ms-2');
-                if (msgEl) msgEl.textContent = 'Bezig met uploaden...';
-            });
-        }
-    });
+              const formData = new FormData(uploadForm);
+              fetch(uploadForm.getAttribute('action'), {
+                  method: 'POST',
+                  body: formData
+              })
+              .then(res => res.json())
+              .then(data => {
+                  if (data.status) {
+                      showToast('Upload geslaagd!', true);
+                      // Optioneel: herlaad de pagina of update de filelist
+                      setTimeout(() => window.location.reload(), 1500);
+                  } else if (data.error) {
+                      showToast('Upload mislukt: ' + data.error, false);
+                  }
+              })
+              .catch(err => {
+                  showToast('Upload mislukt: ' + err.message, false);
+              })
+              .finally(() => {
+                  spinner.style.display = 'none';
+                  if (msgEl) msgEl.textContent = 'Alles wordt gedownload...';
+              });
+          });
+      }
+  });
 
       document.addEventListener('DOMContentLoaded', function() {
           // Get the spinner element
