@@ -7,20 +7,27 @@ import org.soprasteria.avans.lockercloud.dto.SyncResult;
 import org.soprasteria.avans.lockercloud.exception.FileStorageException;
 import org.soprasteria.avans.lockercloud.model.FileMetadata;
 import org.soprasteria.avans.lockercloud.service.FileManagerService;
+import org.soprasteria.avans.lockercloud.socket.SocketFileClient;
+import org.soprasteria.avans.lockercloud.socket.SocketFileClient.DownloadResult;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -29,12 +36,21 @@ import java.util.zip.ZipOutputStream;
 @Tag(name = "File Operations", description = "Endpoints for file upload, download, deletion, listing and synchronization")
 public class FileController {
 
+    private static final Logger log = LoggerFactory.getLogger(FileController.class);
+
     private final FileManagerService fileManagerService;
+    private final String socketHost;
+    private final int socketPort;
 
     @Autowired
-    public FileController(FileManagerService fileManagerService) {
+    public FileController(FileManagerService fileManagerService,
+                          @Value("${file.socket.host:localhost}") String socketHost,
+                          @Value("${file.socket.port:9090}") int socketPort) {
         this.fileManagerService = fileManagerService;
+        this.socketHost = socketHost;
+        this.socketPort = socketPort;
     }
+
 
     @GetMapping("/")
     public String index() {
@@ -47,18 +63,17 @@ public class FileController {
     @PostMapping("/upload")
     public String uploadFile(
             @RequestParam("file") MultipartFile file,
-            RedirectAttributes redirectAttributes) {
-        try {
-            fileManagerService.saveFileWithRetry(file);
-            redirectAttributes.addFlashAttribute(
-              "uploadSuccess",
-              "Bestand " + file.getOriginalFilename() + " succesvol geüpload!"
-            );
+            RedirectAttributes redirectAttributes,
+            @RequestHeader(value = "Checksum", required = false) String checksum) {
+        try (SocketFileClient client = new SocketFileClient(socketHost, socketPort)) {
+            log.info("Uploading {} via socket", file.getOriginalFilename());
+            client.upload(file.getOriginalFilename(), file.getBytes());
+            redirectAttributes.addFlashAttribute("uploadSuccess",
+                    "Bestand " + file.getOriginalFilename() + " succesvol geüpload!");
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute(
-              "uploadError",
-              "Fout bij uploaden: " + e.getMessage()
-            );
+            log.error("Socket upload failed", e);
+            redirectAttributes.addFlashAttribute("uploadError",
+                    "Fout bij uploaden: " + e.getMessage());
         }
         return "redirect:/";
     }
@@ -67,14 +82,31 @@ public class FileController {
     @ApiResponse(responseCode = "200", description = "File downloaded successfully")
     @ApiResponse(responseCode = "400", description = "Error downloading file")
     @GetMapping("/download")
-    public ResponseEntity<byte[]> downloadFile(@RequestParam("fileName") String fileName) {
-        try {
-            byte[] fileData = fileManagerService.getFile(fileName);
+    public ResponseEntity<byte[]> downloadFile(
+            @RequestParam(value = "file", required = false) String file,
+            @RequestParam(value = "fileName", required = false) String fileName) {
+        if (fileName == null || fileName.isEmpty()) {
+            fileName = file;
+        }
+        return doDownload(fileName);
+    }
+
+    @GetMapping("/download/{fileName}")
+    public ResponseEntity<byte[]> downloadFilePath(@PathVariable String fileName) {
+        return doDownload(fileName);
+    }
+
+    private ResponseEntity<byte[]> doDownload(String fileName) {
+        try (SocketFileClient client = new SocketFileClient(socketHost, socketPort)) {
+            DownloadResult result = client.download(fileName);
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileName + "\"")
+                    .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(result.data.length))
+                    .header("Checksum", result.checksum == null ? "" : result.checksum)
                     .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                    .body(fileData);
+                    .body(result.data);
         } catch (Exception e) {
+            log.error("Download via socket failed", e);
             return ResponseEntity.badRequest().body(null);
         }
     }
@@ -85,43 +117,58 @@ public class FileController {
     @GetMapping("/downloadAll")
     public ResponseEntity<byte[]> downloadAllFiles() {
         try {
+            // Ophalen van de bestandslijst. Gaat dit mis dan melden we een 500-fout.
             List<String> filenames = fileManagerService.listFiles();
+
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             try (ZipOutputStream zos = new ZipOutputStream(baos)) {
                 for (String name : filenames) {
-                    byte[] data = fileManagerService.getFile(name);
-                    if (data == null) {
-                        // Log a warning and skip this file
-                        System.err.println("Warning: File " + name + " could not be found or is empty.");
-                        continue;
+                    try {
+                        byte[] data = fileManagerService.getFile(name);
+                        if (data == null) {
+                            // Sla lege bestanden over
+                            continue;
+                        }
+                        ZipEntry entry = new ZipEntry(name);
+                        zos.putNextEntry(entry);
+                        zos.write(data);
+                        zos.closeEntry();
+                    } catch (Exception ex) {
+                        // Fout bij het lezen van een bestand -> hele operatie mislukt
+                        throw ex;
                     }
-                    ZipEntry entry = new ZipEntry(name);
-                    zos.putNextEntry(entry);
-                    zos.write(data);
-                    zos.closeEntry();
                 }
             }
+
             byte[] zipBytes = baos.toByteArray();
             return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"all-files.zip\"")
-                .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                .body(zipBytes);
-        } catch (IOException | RuntimeException e) {
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"all-files.zip\"")
+                    .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(zipBytes.length))
+                    .contentType(MediaType.parseMediaType("application/zip"))
+                    .body(zipBytes);
+        } catch (Exception e) {
             return ResponseEntity
-                .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(null);
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(null);
         }
     }
 
     @Operation(summary = "Delete a file", description = "Deletes a file from the server")
     @ApiResponse(responseCode = "200", description = "File deleted successfully")
     @ApiResponse(responseCode = "400", description = "Error deleting file")
-    @DeleteMapping("/delete")
-    public ResponseEntity<String> deleteFile(@RequestParam("fileName") String fileName) {
-        try {
-            fileManagerService.deleteFile(fileName);
+    @RequestMapping(value = "/delete", method = {RequestMethod.DELETE, RequestMethod.GET})
+    public ResponseEntity<String> deleteFile(
+            @RequestParam(value = "file", required = false) String file,
+            @RequestParam(value = "fileName", required = false) String fileName) {
+        if (fileName == null || fileName.isEmpty()) {
+            fileName = file;
+        }
+        try (SocketFileClient client = new SocketFileClient(socketHost, socketPort)) {
+            log.info("Deleting {} via socket", fileName);
+            client.delete(fileName);
             return ResponseEntity.ok("File deleted successfully");
         } catch (Exception e) {
+            log.error("Delete via socket failed", e);
             return ResponseEntity.badRequest().body("Error deleting file: " + e.getMessage());
         }
     }
@@ -143,7 +190,7 @@ public class FileController {
     public ResponseEntity<?> syncFiles(@RequestBody List<FileMetadata> clientFiles) {
         try {
             SyncResult result = fileManagerService.syncFiles(clientFiles);
-            if (!result.getConflictFiles().isEmpty()) {
+            if (result.getConflictFiles() != null && !result.getConflictFiles().isEmpty()) {
                 return ResponseEntity
                         .status(HttpStatus.CONFLICT)
                         .body(result);
@@ -152,6 +199,10 @@ public class FileController {
         } catch (FileStorageException e) {
             return ResponseEntity
                     .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error syncing files: " + e.getMessage());
+        } catch (Exception e) {
+            return ResponseEntity
+                    .badRequest()
                     .body("Error syncing files: " + e.getMessage());
         }
     }
