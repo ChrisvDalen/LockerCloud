@@ -17,6 +17,9 @@ import org.slf4j.LoggerFactory;
  */
 public class SocketFileClient implements Closeable {
     private static final Logger log = LoggerFactory.getLogger(SocketFileClient.class);
+    /** Maximum buffer used when sending data to the server (1MB). */
+    private static final int TRANSFER_BUFFER_SIZE = 1024 * 1024;
+
     private final String host;
     private final int port;
     private Socket socket;
@@ -32,24 +35,72 @@ public class SocketFileClient implements Closeable {
     private void connect() throws IOException {
         log.debug("Connecting to {}:{}", host, port);
         socket = new Socket(host, port);
-        socket.setReceiveBufferSize(64 * 1024);
-        socket.setSendBufferSize(64 * 1024);
-        in = new BufferedInputStream(socket.getInputStream(), 64 * 1024);
-        out = new BufferedOutputStream(socket.getOutputStream(), 64 * 1024);
+        socket.setReceiveBufferSize(TRANSFER_BUFFER_SIZE);
+        socket.setSendBufferSize(TRANSFER_BUFFER_SIZE);
+        in = new BufferedInputStream(socket.getInputStream(), TRANSFER_BUFFER_SIZE);
+        out = new BufferedOutputStream(socket.getOutputStream(), TRANSFER_BUFFER_SIZE);
     }
 
     public String upload(String fileName, byte[] data) throws IOException {
-        String checksum = md5Hex(data);
+        try (ByteArrayInputStream bis = new ByteArrayInputStream(data)) {
+            return upload(fileName, bis, data.length);
+        }
+    }
+
+    /**
+     * Upload data from a stream to the server using a buffer of at most 1MB.
+     * The provided length is used for the Content-Length header.
+     */
+    public String upload(String fileName, InputStream dataStream, long length) throws IOException {
+        MessageDigest md;
+        try {
+            md = MessageDigest.getInstance("MD5");
+        } catch (NoSuchAlgorithmException e) {
+            throw new IOException("MD5 not available", e);
+        }
+
+        // Spool the stream to a temporary file while calculating checksum
+        File temp = File.createTempFile("upload", ".tmp");
+        long bytes = 0;
+        try (OutputStream tmpOut = new BufferedOutputStream(new FileOutputStream(temp), TRANSFER_BUFFER_SIZE)) {
+            byte[] buf = new byte[TRANSFER_BUFFER_SIZE];
+            int read;
+            while ((read = dataStream.read(buf)) != -1) {
+                md.update(buf, 0, read);
+                tmpOut.write(buf, 0, read);
+                bytes += read;
+            }
+        }
+        if (length <= 0) {
+            length = bytes;
+        }
+
+        String checksum = bytesToHex(md.digest());
+
         log.debug("Uploading {}", fileName);
         StringBuilder req = new StringBuilder();
         req.append("POST /upload HTTP/1.1\n");
         req.append("Host: ").append(host).append('\n');
-        req.append("Content-Length: ").append(data.length).append('\n');
+        req.append("Content-Length: ").append(length).append('\n');
         req.append("Content-Disposition: form-data; filename=\"").append(fileName).append("\"\n");
         req.append("Checksum: ").append(checksum).append('\n');
         req.append('\n');
         out.write(req.toString().getBytes(StandardCharsets.UTF_8));
-        out.write(data);
+
+        try (InputStream tmpIn = new BufferedInputStream(new FileInputStream(temp), TRANSFER_BUFFER_SIZE)) {
+            byte[] buf = new byte[TRANSFER_BUFFER_SIZE];
+            long remaining = length;
+            while (remaining > 0) {
+                int r = tmpIn.read(buf, 0, (int)Math.min(buf.length, remaining));
+                if (r == -1) {
+                    break;
+                }
+                out.write(buf, 0, r);
+                remaining -= r;
+            }
+        } finally {
+            temp.delete();
+        }
         out.flush();
 
         Response resp = readResponse();
@@ -167,16 +218,10 @@ public class SocketFileClient implements Closeable {
         Map<String, String> headers;
     }
 
-    private static String md5Hex(byte[] data) {
-        try {
-            MessageDigest md = MessageDigest.getInstance("MD5");
-            byte[] digest = md.digest(data);
-            StringBuilder sb = new StringBuilder();
-            for (byte b : digest) sb.append(String.format("%02x", b));
-            return sb.toString();
-        } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException("MD5 not available", e);
-        }
+    private static String bytesToHex(byte[] data) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : data) sb.append(String.format("%02x", b));
+        return sb.toString();
     }
 
     @Override

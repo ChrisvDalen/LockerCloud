@@ -36,9 +36,10 @@ class SocketFileServerTest {
     @Test
     void uploadAndDownload_flow() throws Exception {
         byte[] data = "hello".getBytes();
-        when(fileManager.saveFileStream(eq("test.txt"), any(InputStream.class), eq((long) data.length), eq("abc"))).thenReturn("abc");
+        String checksum = "5d41402abc4b2a76b9719d911017c592"; // MD5 of "hello"
+        when(fileManager.saveFileStream(eq("test.txt"), any(InputStream.class), eq((long) data.length), eq(checksum))).thenReturn(checksum);
         when(fileManager.getFile("test.txt")).thenReturn(data);
-        when(fileManager.getFileChecksum("test.txt")).thenReturn("abc");
+        when(fileManager.getFileChecksum("test.txt")).thenReturn(checksum);
 
         try (SocketFileClient client = new SocketFileClient("localhost", 9090)) {
             String status = client.upload("test.txt", data);

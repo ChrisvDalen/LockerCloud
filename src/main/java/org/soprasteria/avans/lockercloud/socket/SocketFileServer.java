@@ -52,8 +52,8 @@ public class SocketFileServer implements Runnable {
             while (running) {
                 Socket socket = ss.accept();
                 log.debug("Accepted connection from {}", socket.getRemoteSocketAddress());
-                socket.setReceiveBufferSize(64 * 1024);
-                socket.setSendBufferSize(64 * 1024);
+                socket.setReceiveBufferSize(1024 * 1024);
+                socket.setSendBufferSize(1024 * 1024);
                 new Thread(() -> handleClient(socket)).start();
             }
         } catch (IOException e) {
@@ -67,9 +67,9 @@ public class SocketFileServer implements Runnable {
 
     private void handleClient(Socket socket) {
         try {
-            InputStream rawIn = new BufferedInputStream(socket.getInputStream(), 64 * 1024);
+            InputStream rawIn = new BufferedInputStream(socket.getInputStream(), 1024 * 1024);
             BufferedReader reader = new BufferedReader(new InputStreamReader(rawIn, StandardCharsets.UTF_8));
-            OutputStream out = new BufferedOutputStream(socket.getOutputStream(), 64 * 1024);
+            OutputStream out = new BufferedOutputStream(socket.getOutputStream(), 1024 * 1024);
 
             String startLine = reader.readLine();
             if (startLine == null) return;

@@ -67,7 +67,7 @@ public class FileController {
             @RequestHeader(value = "Checksum", required = false) String checksum) {
         try (SocketFileClient client = new SocketFileClient(socketHost, socketPort)) {
             log.info("Uploading {} via socket", file.getOriginalFilename());
-            client.upload(file.getOriginalFilename(), file.getBytes());
+            client.upload(file.getOriginalFilename(), file.getInputStream(), file.getSize());
             redirectAttributes.addFlashAttribute("uploadSuccess",
                     "Bestand " + file.getOriginalFilename() + " succesvol geüpload!");
         } catch (Exception e) {
