@@ -48,8 +48,10 @@ public class SocketFileClient implements Closeable {
     }
 
     /**
-     * Upload data from a stream to the server using a buffer of at most 1MB.
-     * The provided length is used for the Content-Length header.
+     * Upload data from a stream to the server using at most a 1MB buffer. The
+     * stream is read once and directly forwarded to the server while the client
+     * calculates a checksum locally. The checksum returned by the server can be
+     * compared to this one by callers if desired.
      */
     public String upload(String fileName, InputStream dataStream, long length) throws IOException {
         MessageDigest md;
@@ -59,52 +61,36 @@ public class SocketFileClient implements Closeable {
             throw new IOException("MD5 not available", e);
         }
 
-        // Spool the stream to a temporary file while calculating checksum
-        File temp = File.createTempFile("upload", ".tmp");
-        long bytes = 0;
-        try (OutputStream tmpOut = new BufferedOutputStream(new FileOutputStream(temp), TRANSFER_BUFFER_SIZE)) {
-            byte[] buf = new byte[TRANSFER_BUFFER_SIZE];
-            int read;
-            while ((read = dataStream.read(buf)) != -1) {
-                md.update(buf, 0, read);
-                tmpOut.write(buf, 0, read);
-                bytes += read;
-            }
-        }
-        if (length <= 0) {
-            length = bytes;
-        }
-
-        String checksum = bytesToHex(md.digest());
-
         log.debug("Uploading {}", fileName);
         StringBuilder req = new StringBuilder();
         req.append("POST /upload HTTP/1.1\n");
         req.append("Host: ").append(host).append('\n');
         req.append("Content-Length: ").append(length).append('\n');
         req.append("Content-Disposition: form-data; filename=\"").append(fileName).append("\"\n");
-        req.append("Checksum: ").append(checksum).append('\n');
         req.append('\n');
         out.write(req.toString().getBytes(StandardCharsets.UTF_8));
 
-        try (InputStream tmpIn = new BufferedInputStream(new FileInputStream(temp), TRANSFER_BUFFER_SIZE)) {
-            byte[] buf = new byte[TRANSFER_BUFFER_SIZE];
-            long remaining = length;
-            while (remaining > 0) {
-                int r = tmpIn.read(buf, 0, (int)Math.min(buf.length, remaining));
-                if (r == -1) {
-                    break;
-                }
-                out.write(buf, 0, r);
-                remaining -= r;
+        byte[] buf = new byte[TRANSFER_BUFFER_SIZE];
+        long remaining = length;
+        while (remaining > 0) {
+            int r = dataStream.read(buf, 0, (int) Math.min(buf.length, remaining));
+            if (r == -1) {
+                break;
             }
-        } finally {
-            temp.delete();
+            md.update(buf, 0, r);
+            out.write(buf, 0, r);
+            remaining -= r;
         }
         out.flush();
 
+        String localChecksum = bytesToHex(md.digest());
+
         Response resp = readResponse();
         if (resp.code == 200) {
+            String serverChecksum = resp.headers.get("Checksum");
+            if (serverChecksum != null && !serverChecksum.equalsIgnoreCase(localChecksum)) {
+                throw new IOException("Checksum mismatch after upload");
+            }
             log.debug("Upload of {} successful", fileName);
             return resp.statusLine;
         }
