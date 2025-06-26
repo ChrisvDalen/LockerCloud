@@ -66,9 +66,10 @@ public class FileController {
             @RequestParam("file") MultipartFile file,
             RedirectAttributes redirectAttributes,
             @RequestHeader(value = "Checksum", required = false) String checksum) {
-        try (SocketFileClient client = new SocketFileClient(socketHost, socketPort)) {
+        try (SocketFileClient client = new SocketFileClient(socketHost, socketPort);
+             InputStream is = file.getInputStream()) {
             log.info("Uploading {} via socket", file.getOriginalFilename());
-            client.upload(file.getOriginalFilename(), file.getInputStream(), file.getSize());
+            client.upload(file.getOriginalFilename(), is, file.getSize());
             redirectAttributes.addFlashAttribute("uploadSuccess",
                     "Bestand " + file.getOriginalFilename() + " succesvol geüpload!");
         } catch (Exception e) {
