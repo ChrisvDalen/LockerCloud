@@ -68,15 +68,14 @@ public class SocketFileServer implements Runnable {
     private void handleClient(Socket socket) {
         try {
             InputStream rawIn = new BufferedInputStream(socket.getInputStream(), 1024 * 1024);
-            BufferedReader reader = new BufferedReader(new InputStreamReader(rawIn, StandardCharsets.UTF_8));
             OutputStream out = new BufferedOutputStream(socket.getOutputStream(), 1024 * 1024);
 
-            String startLine = reader.readLine();
+            String startLine = readLine(rawIn);
             if (startLine == null) return;
             log.debug("Request: {}", startLine);
             Map<String, String> headers = new HashMap<>();
             String line;
-            while ((line = reader.readLine()) != null && !line.isEmpty()) {
+            while ((line = readLine(rawIn)) != null && !line.isEmpty()) {
                 int idx = line.indexOf(':');
                 if (idx > 0) {
                     headers.put(line.substring(0, idx).trim(), line.substring(idx + 1).trim());
@@ -229,6 +228,24 @@ public class SocketFileServer implements Runnable {
         sb.append("\r\n");
         out.write(sb.toString().getBytes(StandardCharsets.UTF_8));
         out.flush();
+    }
+
+    /** Read a single line terminated by \n from the given stream. */
+    private String readLine(InputStream in) throws IOException {
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        int b;
+        while ((b = in.read()) != -1) {
+            if (b == '\n') {
+                break;
+            }
+            if (b != '\r') {
+                bos.write(b);
+            }
+        }
+        if (b == -1 && bos.size() == 0) {
+            return null;
+        }
+        return bos.toString(StandardCharsets.UTF_8);
     }
 
     private String extractFileName(String disposition) {
