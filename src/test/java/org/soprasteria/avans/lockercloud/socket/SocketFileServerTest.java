@@ -9,6 +9,7 @@ import org.soprasteria.avans.lockercloud.service.FileManagerService;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -38,7 +39,12 @@ class SocketFileServerTest {
         byte[] data = "hello".getBytes();
         String checksum = "5d41402abc4b2a76b9719d911017c592"; // MD5 of "hello"
         when(fileManager.saveFileStream(eq("test.txt"), any(InputStream.class), eq((long) data.length), isNull())).thenReturn(checksum);
-        when(fileManager.getFile("test.txt")).thenReturn(data);
+        when(fileManager.getFileSize("test.txt")).thenReturn((long) data.length);
+        doAnswer(invocation -> {
+            OutputStream os = invocation.getArgument(1);
+            os.write(data);
+            return null;
+        }).when(fileManager).streamFile(eq("test.txt"), any(OutputStream.class));
         when(fileManager.getFileChecksum("test.txt")).thenReturn(checksum);
 
         try (SocketFileClient client = new SocketFileClient("localhost", 9090)) {

@@ -99,6 +99,17 @@ public class SocketFileClient implements Closeable {
     }
 
     public DownloadResult download(String fileName) throws IOException {
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        String checksum = downloadTo(fileName, bos);
+        DownloadResult result = new DownloadResult();
+        result.data = bos.toByteArray();
+        result.checksum = checksum;
+        return result;
+    }
+
+    /** Download a file and write it directly to the provided stream. Returns the
+     * checksum sent by the server. */
+    public String downloadTo(String fileName, OutputStream dest) throws IOException {
         log.debug("Downloading {}", fileName);
         String req = "GET /download?file=" + fileName + " HTTP/1.1\n" +
                 "Host: " + host + "\n\n";
@@ -108,15 +119,17 @@ public class SocketFileClient implements Closeable {
         if (resp.code != 200) {
             throw new IOException("Server returned: " + resp.statusLine);
         }
-        int length = Integer.parseInt(resp.headers.getOrDefault("Content-Length", "0"));
-        byte[] buf = in.readNBytes(length);
-        String checksum = resp.headers.get("Checksum");
-        // Older tests do not expect checksum validation on download either, so
-        // we simply return the data regardless of any mismatch.
-        DownloadResult result = new DownloadResult();
-        result.data = buf;
-        result.checksum = checksum;
-        return result;
+        long length = Long.parseLong(resp.headers.getOrDefault("Content-Length", "0"));
+        byte[] buffer = new byte[TRANSFER_BUFFER_SIZE];
+        long remaining = length;
+        while (remaining > 0) {
+            int r = in.read(buffer, 0, (int) Math.min(buffer.length, remaining));
+            if (r == -1) break;
+            dest.write(buffer, 0, r);
+            remaining -= r;
+        }
+        dest.flush();
+        return resp.headers.get("Checksum");
     }
 
     public String delete(String fileName) throws IOException {

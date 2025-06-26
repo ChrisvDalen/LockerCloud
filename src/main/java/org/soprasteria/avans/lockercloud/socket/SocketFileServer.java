@@ -142,20 +142,20 @@ public class SocketFileServer implements Runnable {
         }
         try {
             log.info("Downloading {}", fileName);
-            byte[] data = fileManager.getFile(fileName);
-            if (data == null) {
+            long length = fileManager.getFileSize(fileName);
+            if (length == 0L) {
                 writeStatus(out, 404, "Not Found", "no file");
                 return;
             }
             String checksum = fileManager.getFileChecksum(fileName);
             StringBuilder sb = new StringBuilder();
             sb.append("HTTP/1.1 200 OK\r\n");
-            sb.append("Content-Length: ").append(data.length).append("\r\n");
+            sb.append("Content-Length: ").append(length).append("\r\n");
             sb.append("Content-Disposition: attachment; filename=\"").append(fileName).append("\"\r\n");
             if (checksum != null) sb.append("Checksum: ").append(checksum).append("\r\n");
             sb.append("\r\n");
             out.write(sb.toString().getBytes(StandardCharsets.UTF_8));
-            out.write(data);
+            fileManager.streamFile(fileName, out);
             out.flush();
             log.debug("Download complete for {}", fileName);
         } catch (Exception e) {

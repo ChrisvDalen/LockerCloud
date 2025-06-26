@@ -340,6 +340,73 @@ public class FileManagerService {
         }
     }
 
+    /**
+     * Return the size of the stored file, or 0 when not found. When the file is
+     * stored as chunks the sizes of the chunks are summed.
+     */
+    public long getFileSize(String fileName) {
+        if (fileName == null) {
+            return 0L;
+        }
+        String normalized = Paths.get(fileName).getFileName().toString();
+        Path filePath = storageLocation.resolve(normalized);
+        if (Files.exists(filePath)) {
+            try {
+                return Files.size(filePath);
+            } catch (IOException e) {
+                throw new FileStorageException("Error reading file size for " + normalized, e);
+            }
+        }
+        // Check chunk files
+        try (Stream<Path> stream = Files.list(storageLocation)) {
+            return stream.filter(p -> p.getFileName().toString().startsWith(normalized + ".part"))
+                    .mapToLong(p -> {
+                        try {
+                            return Files.size(p);
+                        } catch (IOException e) {
+                            return 0L;
+                        }
+                    })
+                    .sum();
+        } catch (IOException e) {
+            return 0L;
+        }
+    }
+
+    /**
+     * Stream the requested file to the provided OutputStream. Supports files
+     * stored as chunks without loading them entirely in memory.
+     */
+    public void streamFile(String fileName, OutputStream out) throws IOException {
+        if (fileName == null) return;
+        String normalized = Paths.get(fileName).getFileName().toString();
+        Path filePath = storageLocation.resolve(normalized);
+        byte[] buffer = new byte[BUFFER_SIZE];
+        if (Files.exists(filePath)) {
+            try (InputStream in = Files.newInputStream(filePath)) {
+                int r;
+                while ((r = in.read(buffer)) != -1) {
+                    out.write(buffer, 0, r);
+                }
+            }
+            return;
+        }
+        try (Stream<Path> stream = Files.list(storageLocation)) {
+            List<Path> chunks = stream
+                    .filter(p -> p.getFileName().toString().startsWith(normalized + ".part"))
+                    .sorted(Comparator.comparingInt(p -> extractChunkIndex(p.getFileName().toString(), normalized)))
+                    .toList();
+            for (Path chunk : chunks) {
+                try (InputStream in = Files.newInputStream(chunk)) {
+                    int r;
+                    while ((r = in.read(buffer)) != -1) {
+                        out.write(buffer, 0, r);
+                    }
+                }
+            }
+        }
+    }
+
     @Recover
     public byte[] recoverGetFile(IOException e, String fileName) {
         // cleanup if needed, log, then throw or return an error sentinel
