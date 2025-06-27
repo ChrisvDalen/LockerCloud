@@ -8,7 +8,6 @@ import org.soprasteria.avans.lockercloud.exception.FileStorageException;
 import org.soprasteria.avans.lockercloud.model.FileMetadata;
 import org.soprasteria.avans.lockercloud.service.FileManagerService;
 import org.soprasteria.avans.lockercloud.socket.SocketFileClient;
-import org.soprasteria.avans.lockercloud.socket.SocketFileClient.DownloadResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,11 +22,10 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayOutputStream;
-import java.io.IOException;
+import java.io.InputStream;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
-import java.util.HashMap;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -65,9 +63,10 @@ public class FileController {
             @RequestParam("file") MultipartFile file,
             RedirectAttributes redirectAttributes,
             @RequestHeader(value = "Checksum", required = false) String checksum) {
-        try (SocketFileClient client = new SocketFileClient(socketHost, socketPort)) {
+        try (SocketFileClient client = new SocketFileClient(socketHost, socketPort);
+             InputStream is = file.getInputStream()) {
             log.info("Uploading {} via socket", file.getOriginalFilename());
-            client.upload(file.getOriginalFilename(), file.getBytes());
+            client.upload(file.getOriginalFilename(), is, file.getSize());
             redirectAttributes.addFlashAttribute("uploadSuccess",
                     "Bestand " + file.getOriginalFilename() + " succesvol geüpload!");
         } catch (Exception e) {
@@ -82,7 +81,7 @@ public class FileController {
     @ApiResponse(responseCode = "200", description = "File downloaded successfully")
     @ApiResponse(responseCode = "400", description = "Error downloading file")
     @GetMapping("/download")
-    public ResponseEntity<byte[]> downloadFile(
+    public ResponseEntity<StreamingResponseBody> downloadFile(
             @RequestParam(value = "file", required = false) String file,
             @RequestParam(value = "fileName", required = false) String fileName) {
         if (fileName == null || fileName.isEmpty()) {
@@ -92,19 +91,31 @@ public class FileController {
     }
 
     @GetMapping("/download/{fileName}")
-    public ResponseEntity<byte[]> downloadFilePath(@PathVariable String fileName) {
+    public ResponseEntity<StreamingResponseBody> downloadFilePath(@PathVariable String fileName) {
         return doDownload(fileName);
     }
 
-    private ResponseEntity<byte[]> doDownload(String fileName) {
-        try (SocketFileClient client = new SocketFileClient(socketHost, socketPort)) {
-            DownloadResult result = client.download(fileName);
-            return ResponseEntity.ok()
+    private ResponseEntity<StreamingResponseBody> doDownload(String fileName) {
+        try {
+            long length = fileManagerService.getFileSize(fileName);
+            String checksum = fileManagerService.getFileChecksum(fileName);
+
+            StreamingResponseBody body = out -> {
+                try (SocketFileClient client = new SocketFileClient(socketHost, socketPort)) {
+                    client.downloadTo(fileName, out);
+                }
+            };
+
+            ResponseEntity.BodyBuilder builder = ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileName + "\"")
-                    .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(result.data.length))
-                    .header("Checksum", result.checksum == null ? "" : result.checksum)
-                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                    .body(result.data);
+                    .contentType(MediaType.APPLICATION_OCTET_STREAM);
+            if (length > 0) {
+                builder.header(HttpHeaders.CONTENT_LENGTH, String.valueOf(length));
+            }
+            if (checksum != null) {
+                builder.header("Checksum", checksum);
+            }
+            return builder.body(body);
         } catch (Exception e) {
             log.error("Download via socket failed", e);
             return ResponseEntity.badRequest().body(null);

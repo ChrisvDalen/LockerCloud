@@ -17,6 +17,9 @@ import org.slf4j.LoggerFactory;
  */
 public class SocketFileClient implements Closeable {
     private static final Logger log = LoggerFactory.getLogger(SocketFileClient.class);
+    /** Maximum buffer used when sending data to the server (1MB). */
+    private static final int TRANSFER_BUFFER_SIZE = 1024 * 1024;
+
     private final String host;
     private final int port;
     private Socket socket;
@@ -32,28 +35,62 @@ public class SocketFileClient implements Closeable {
     private void connect() throws IOException {
         log.debug("Connecting to {}:{}", host, port);
         socket = new Socket(host, port);
-        socket.setReceiveBufferSize(64 * 1024);
-        socket.setSendBufferSize(64 * 1024);
-        in = new BufferedInputStream(socket.getInputStream(), 64 * 1024);
-        out = new BufferedOutputStream(socket.getOutputStream(), 64 * 1024);
+        socket.setReceiveBufferSize(TRANSFER_BUFFER_SIZE);
+        socket.setSendBufferSize(TRANSFER_BUFFER_SIZE);
+        in = new BufferedInputStream(socket.getInputStream(), TRANSFER_BUFFER_SIZE);
+        out = new BufferedOutputStream(socket.getOutputStream(), TRANSFER_BUFFER_SIZE);
     }
 
     public String upload(String fileName, byte[] data) throws IOException {
-        String checksum = md5Hex(data);
+        try (ByteArrayInputStream bis = new ByteArrayInputStream(data)) {
+            return upload(fileName, bis, data.length);
+        }
+    }
+
+    /**
+     * Upload data from a stream to the server using at most a 1MB buffer. The
+     * stream is read once and directly forwarded to the server while the client
+     * calculates a checksum locally. The checksum returned by the server can be
+     * compared to this one by callers if desired.
+     */
+    public String upload(String fileName, InputStream dataStream, long length) throws IOException {
+        MessageDigest md;
+        try {
+            md = MessageDigest.getInstance("MD5");
+        } catch (NoSuchAlgorithmException e) {
+            throw new IOException("MD5 not available", e);
+        }
+
         log.debug("Uploading {}", fileName);
         StringBuilder req = new StringBuilder();
         req.append("POST /upload HTTP/1.1\n");
         req.append("Host: ").append(host).append('\n');
-        req.append("Content-Length: ").append(data.length).append('\n');
+        req.append("Content-Length: ").append(length).append('\n');
         req.append("Content-Disposition: form-data; filename=\"").append(fileName).append("\"\n");
-        req.append("Checksum: ").append(checksum).append('\n');
         req.append('\n');
         out.write(req.toString().getBytes(StandardCharsets.UTF_8));
-        out.write(data);
+
+        byte[] buf = new byte[TRANSFER_BUFFER_SIZE];
+        long remaining = length;
+        while (remaining > 0) {
+            int r = dataStream.read(buf, 0, (int) Math.min(buf.length, remaining));
+            if (r == -1) {
+                break;
+            }
+            md.update(buf, 0, r);
+            out.write(buf, 0, r);
+            remaining -= r;
+        }
         out.flush();
+
+        String localChecksum = bytesToHex(md.digest());
 
         Response resp = readResponse();
         if (resp.code == 200) {
+            String serverChecksum = resp.headers.get("Checksum");
+            if (serverChecksum != null && !serverChecksum.equalsIgnoreCase(localChecksum)) {
+                throw new IOException("Checksum mismatch after upload");
+            }
             log.debug("Upload of {} successful", fileName);
             return resp.statusLine;
         }
@@ -62,6 +99,17 @@ public class SocketFileClient implements Closeable {
     }
 
     public DownloadResult download(String fileName) throws IOException {
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        String checksum = downloadTo(fileName, bos);
+        DownloadResult result = new DownloadResult();
+        result.data = bos.toByteArray();
+        result.checksum = checksum;
+        return result;
+    }
+
+    /** Download a file and write it directly to the provided stream. Returns the
+     * checksum sent by the server. */
+    public String downloadTo(String fileName, OutputStream dest) throws IOException {
         log.debug("Downloading {}", fileName);
         String req = "GET /download?file=" + fileName + " HTTP/1.1\n" +
                 "Host: " + host + "\n\n";
@@ -71,15 +119,17 @@ public class SocketFileClient implements Closeable {
         if (resp.code != 200) {
             throw new IOException("Server returned: " + resp.statusLine);
         }
-        int length = Integer.parseInt(resp.headers.getOrDefault("Content-Length", "0"));
-        byte[] buf = in.readNBytes(length);
-        String checksum = resp.headers.get("Checksum");
-        // Older tests do not expect checksum validation on download either, so
-        // we simply return the data regardless of any mismatch.
-        DownloadResult result = new DownloadResult();
-        result.data = buf;
-        result.checksum = checksum;
-        return result;
+        long length = Long.parseLong(resp.headers.getOrDefault("Content-Length", "0"));
+        byte[] buffer = new byte[TRANSFER_BUFFER_SIZE];
+        long remaining = length;
+        while (remaining > 0) {
+            int r = in.read(buffer, 0, (int) Math.min(buffer.length, remaining));
+            if (r == -1) break;
+            dest.write(buffer, 0, r);
+            remaining -= r;
+        }
+        dest.flush();
+        return resp.headers.get("Checksum");
     }
 
     public String delete(String fileName) throws IOException {
@@ -167,16 +217,10 @@ public class SocketFileClient implements Closeable {
         Map<String, String> headers;
     }
 
-    private static String md5Hex(byte[] data) {
-        try {
-            MessageDigest md = MessageDigest.getInstance("MD5");
-            byte[] digest = md.digest(data);
-            StringBuilder sb = new StringBuilder();
-            for (byte b : digest) sb.append(String.format("%02x", b));
-            return sb.toString();
-        } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException("MD5 not available", e);
-        }
+    private static String bytesToHex(byte[] data) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : data) sb.append(String.format("%02x", b));
+        return sb.toString();
     }
 
     @Override

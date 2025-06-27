@@ -10,6 +10,7 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 import org.springframework.web.servlet.mvc.support.RedirectAttributesModelMap;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 import org.soprasteria.avans.lockercloud.dto.SyncResult;
 import org.soprasteria.avans.lockercloud.model.FileMetadata;
 import org.soprasteria.avans.lockercloud.service.FileManagerService;
@@ -79,32 +80,45 @@ class FileControllerTest {
     }
 
     @Test
-    void downloadFile_success() {
+    void downloadFile_success() throws IOException {
         byte[] data = {1,2,3};
-        when(fileManagerService.getFile("f.bin")).thenReturn(data);
+        when(fileManagerService.getFileSize("f.bin")).thenReturn((long) data.length);
         when(fileManagerService.getFileChecksum("f.bin")).thenReturn("abc");
+        doAnswer(invocation -> {
+            OutputStream os = invocation.getArgument(1);
+            os.write(data);
+            return null;
+        }).when(fileManagerService).streamFile(eq("f.bin"), any(OutputStream.class));
 
-        ResponseEntity<byte[]> resp = controller.downloadFile("f.bin", null);
+        ResponseEntity<StreamingResponseBody> resp = controller.downloadFile("f.bin", null);
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        assertNotNull(resp.getBody());
+        try {
+            resp.getBody().writeTo(bos);
+        } catch (IOException e) {
+            fail(e);
+        }
 
         assertEquals(HttpStatus.OK, resp.getStatusCode());
         assertEquals("attachment; filename=\"f.bin\"", resp.getHeaders().getFirst(HttpHeaders.CONTENT_DISPOSITION));
         assertEquals("abc", resp.getHeaders().getFirst("Checksum"));
         assertEquals(String.valueOf(data.length), resp.getHeaders().getFirst(HttpHeaders.CONTENT_LENGTH));
         assertEquals(MediaType.APPLICATION_OCTET_STREAM, resp.getHeaders().getContentType());
-        assertArrayEquals(data, resp.getBody());
-        verify(fileManagerService).getFile("f.bin");
+        assertArrayEquals(data, bos.toByteArray());
+        verify(fileManagerService).streamFile(eq("f.bin"), any(OutputStream.class));
         verify(fileManagerService).getFileChecksum("f.bin");
+        verify(fileManagerService).getFileSize("f.bin");
     }
 
     @Test
     void downloadFile_error() {
-        when(fileManagerService.getFile("x")).thenThrow(new RuntimeException("nf"));
+        when(fileManagerService.getFileSize("x")).thenThrow(new RuntimeException("nf"));
 
-        ResponseEntity<byte[]> resp = controller.downloadFile("x", null);
+        ResponseEntity<StreamingResponseBody> resp = controller.downloadFile("x", null);
 
         assertEquals(HttpStatus.BAD_REQUEST, resp.getStatusCode());
         assertNull(resp.getBody());
-        verify(fileManagerService).getFile("x");
+        verify(fileManagerService).getFileSize("x");
     }
 
     @Test

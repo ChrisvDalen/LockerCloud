@@ -9,6 +9,7 @@ import org.soprasteria.avans.lockercloud.service.FileManagerService;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -36,9 +37,15 @@ class SocketFileServerTest {
     @Test
     void uploadAndDownload_flow() throws Exception {
         byte[] data = "hello".getBytes();
-        when(fileManager.saveFileStream(eq("test.txt"), any(InputStream.class), eq((long) data.length), eq("abc"))).thenReturn("abc");
-        when(fileManager.getFile("test.txt")).thenReturn(data);
-        when(fileManager.getFileChecksum("test.txt")).thenReturn("abc");
+        String checksum = "5d41402abc4b2a76b9719d911017c592"; // MD5 of "hello"
+        when(fileManager.saveFileStream(eq("test.txt"), any(InputStream.class), eq((long) data.length), isNull())).thenReturn(checksum);
+        when(fileManager.getFileSize("test.txt")).thenReturn((long) data.length);
+        doAnswer(invocation -> {
+            OutputStream os = invocation.getArgument(1);
+            os.write(data);
+            return null;
+        }).when(fileManager).streamFile(eq("test.txt"), any(OutputStream.class));
+        when(fileManager.getFileChecksum("test.txt")).thenReturn(checksum);
 
         try (SocketFileClient client = new SocketFileClient("localhost", 9090)) {
             String status = client.upload("test.txt", data);
@@ -46,7 +53,7 @@ class SocketFileServerTest {
 
             SocketFileClient.DownloadResult dl = client.download("test.txt");
             assertArrayEquals(data, dl.data);
-            assertEquals("abc", dl.checksum);
+            assertEquals(checksum, dl.checksum);
         }
     }
 
