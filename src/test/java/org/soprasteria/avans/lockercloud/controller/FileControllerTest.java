@@ -80,7 +80,7 @@ class FileControllerTest {
     }
 
     @Test
-    void downloadFile_success() {
+    void downloadFile_success() throws IOException {
         byte[] data = {1,2,3};
         when(fileManagerService.getFileSize("f.bin")).thenReturn((long) data.length);
         when(fileManagerService.getFileChecksum("f.bin")).thenReturn("abc");
