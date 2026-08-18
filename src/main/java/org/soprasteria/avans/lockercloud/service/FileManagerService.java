@@ -428,7 +428,9 @@ public class FileManagerService {
             Files.copy(in, tempPath, StandardCopyOption.REPLACE_EXISTING);
             String actualChecksum = calculateChecksum(tempPath);
 
-            if (!actualChecksum.equalsIgnoreCase(expectedChecksum)) {
+            if (expectedChecksum != null
+                    && !expectedChecksum.isBlank()
+                    && !actualChecksum.equalsIgnoreCase(expectedChecksum)) {
                 Files.deleteIfExists(tempPath);
                 throw new FileStorageException("Checksum mismatch for file " + normalizedFileName);
             }
