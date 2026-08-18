@@ -28,13 +28,10 @@ import org.slf4j.LoggerFactory;
 @Service
 public class FileManagerService {
 
-    // Voor grote bestanden groter dan 4GB wordt chunking toegepast
-    private static final long CHUNK_THRESHOLD = 4L * 1024 * 1024 * 1024; // 4 GB
-    private static final long CHUNK_SIZE = 10 * 1024 * 1024; // 10 MB
     private static final Logger logger = LoggerFactory.getLogger(FileManagerService.class);
     // Bestanden groter dan 4GB moeten in chunks worden verwerkt volgens het protocol
-    private static final long CHUNK_THRESHOLD = 4L * 1024 * 1024 * 1024; // 4 GB
-    private static final long CHUNK_SIZE = 10L * 1024 * 1024; // 10 MB
+    private long chunkThreshold = 4L * 1024 * 1024 * 1024; // 4 GB
+    private long chunkSize = 10L * 1024 * 1024; // 10 MB
     private static final long MOD_TIME_THRESHOLD_MS = 1000L;
 
     private final Path storageLocation = Paths.get("filestorage");
@@ -58,25 +55,30 @@ public class FileManagerService {
             throw new FileStorageException("File name cannot be null or empty.");
         }
         String normalizedFilename = Paths.get(originalFilename).getFileName().toString();
-        Path targetLocation = storageLocation.resolve(normalizedFilename);
+        if (file.getSize() > chunkThreshold) {
+            saveLargeFile(file, expectedChecksum);
+            return;
+        }
 
-        try {
-            if (file.getSize() > CHUNK_THRESHOLD) {
-                // Grote bestanden: chunking logica
-                saveLargeFile(file, expectedChecksum);
+        saveFileTransactional(file, expectedChecksum);
+    }
+
+    public void saveFileWithRetry(MultipartFile file, String expectedChecksum) {
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            try {
+                saveFile(file, expectedChecksum);
                 return;
+            } catch (FileStorageException exception) {
+                if (!(exception.getCause() instanceof IOException) || attempt == 3) {
+                    throw exception;
+                }
+                deleteFileChunks(file.getOriginalFilename());
             }
-
-            // Kleine bestanden: transactionele opslag met checksum-validatie
-            saveFileTransactional(file, expectedChecksum);
-        } catch (IOException e) {
-            throw new FileStorageException("Error saving file " + normalizedFilename, e);
         }
     }
 
-    @Retryable(retryFor = { IOException.class }, maxAttempts = 3, backoff = @Backoff(delay = 2000))
-    public void saveFileWithRetry(MultipartFile file, String expectedChecksum) {
-        saveFile(file, expectedChecksum);
+    public void saveFileWithRetry(MultipartFile file) {
+        saveFileWithRetry(file, null);
     }
 
     /**
@@ -97,7 +99,7 @@ public class FileManagerService {
     }
 
     @Recover
-    public void recoverSaveFile(IOException e, MultipartFile file) { // Corrected signature
+    public void recoverSaveFile(IOException e, MultipartFile file, String expectedChecksum) {
         String fileName = file.getOriginalFilename();
         if (fileName != null) {
             deleteFileChunks(fileName); // Also delete the potentially incomplete main file if not chunked
@@ -114,7 +116,7 @@ public class FileManagerService {
         String originalFileName = Paths.get(file.getOriginalFilename()).getFileName().toString();
         try (InputStream inputStream = file.getInputStream()) {
             MessageDigest md = MessageDigest.getInstance("MD5");
-            byte[] buffer = new byte[(int) CHUNK_SIZE];
+            byte[] buffer = new byte[(int) chunkSize];
             int bytesRead;
             int chunkIndex = 1;
             List<Path> writtenChunks = new ArrayList<>();
@@ -158,11 +160,9 @@ public class FileManagerService {
                 throw new FileStorageException("Checksum mismatch for file " + originalFileName);
             }
 
-            // 3) (Optioneel) verwijder de chunk-bestanden
-            // Verwijderen uitgeschakeld voor testondersteuning
-            // for (Path chunk : writtenChunks) {
-            //     Files.deleteIfExists(chunk);
-            // }
+            for (Path chunk : writtenChunks) {
+                Files.deleteIfExists(chunk);
+            }
         } catch (IOException | NoSuchAlgorithmException e) {
             // bestaande cleanup
             deleteFileChunks(originalFileName);
@@ -186,6 +186,10 @@ public class FileManagerService {
         } catch (IOException e) {
             logger.error("Error listing directory for deleting chunks of {}: {}", normalizedOriginalFileName, e.getMessage());
         }
+    }
+
+    private static String bytesToHex(byte[] digest) {
+        return HexFormat.of().formatHex(digest);
     }
 
     public byte[] getFileFallback(String fileName, Throwable t) {
@@ -270,7 +274,7 @@ public class FileManagerService {
                     .map(path -> path.getFileName().toString())
                     .filter(name -> !name.contains(".part")) // Exclude chunk files from list
                     .sorted() // Sort for consistent order
-                    .toList()
+                    .toList();
         } catch (IOException e) {
             logger.error("Error listing files from master storage: {}", e.getMessage());
             return Collections.emptyList();
@@ -424,7 +428,9 @@ public class FileManagerService {
             Files.copy(in, tempPath, StandardCopyOption.REPLACE_EXISTING);
             String actualChecksum = calculateChecksum(tempPath);
 
-            if (!actualChecksum.equalsIgnoreCase(expectedChecksum)) {
+            if (expectedChecksum != null
+                    && !expectedChecksum.isBlank()
+                    && !actualChecksum.equalsIgnoreCase(expectedChecksum)) {
                 Files.deleteIfExists(tempPath);
                 throw new FileStorageException("Checksum mismatch for file " + normalizedFileName);
             }

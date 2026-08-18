@@ -59,18 +59,14 @@ class NetworkFaultIntegrationTest {
     @Test
     void largeFileUpload_retriesAndNoLeftoverChunks() throws Exception {
         long chunkSize = 1024; // use small chunk to keep test fast
-        Field chunkSizeField = FileManagerService.class.getDeclaredField("CHUNK_SIZE");
+        Field chunkSizeField = FileManagerService.class.getDeclaredField("chunkSize");
         chunkSizeField.setAccessible(true);
-        Field modifiers = Field.class.getDeclaredField("modifiers");
-        modifiers.setAccessible(true);
-        modifiers.setInt(chunkSizeField, chunkSizeField.getModifiers() & ~java.lang.reflect.Modifier.FINAL);
-        chunkSizeField.set(null, chunkSize);
+        chunkSizeField.set(service, chunkSize);
 
         long threshold = 2048; // force large file path
-        Field thresholdField = FileManagerService.class.getDeclaredField("CHUNK_THRESHOLD");
+        Field thresholdField = FileManagerService.class.getDeclaredField("chunkThreshold");
         thresholdField.setAccessible(true);
-        modifiers.setInt(thresholdField, thresholdField.getModifiers() & ~java.lang.reflect.Modifier.FINAL);
-        thresholdField.set(null, threshold);
+        thresholdField.set(service, threshold);
 
         long dataSize = chunkSize * 3 + 10;
         Supplier<InputStream> supplier = () -> new LargeInputStream(dataSize, (byte) 'A');

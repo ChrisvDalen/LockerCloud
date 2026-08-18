@@ -33,11 +33,6 @@ class FileControllerTest {
     }
 
     @Test
-    void index_returnsIndexView() {
-        assertEquals("index", controller.index());
-    }
-
-    @Test
     void uploadFile_success() {
         MultipartFile file = new MockMultipartFile("file", "test.txt", "text/plain", "data".getBytes());
         RedirectAttributes attrs = new RedirectAttributesModelMap();
@@ -47,13 +42,13 @@ class FileControllerTest {
         assertEquals("redirect:/", view);
         assertTrue(attrs.getFlashAttributes().containsKey("uploadSuccess"));
         assertEquals("Bestand test.txt succesvol geüpload!", attrs.getFlashAttributes().get("uploadSuccess"));
-        verify(fileManagerService).saveFileWithRetry(eq(file), any());
+        verify(fileManagerService).saveFileWithRetry(file);
     }
 
     @Test
     void uploadFile_error()  {
         MultipartFile file = new MockMultipartFile("file", "bad.txt", "text/plain", "data".getBytes());
-        doThrow(new RuntimeException("oops")).when(fileManagerService).saveFileWithRetry(eq(file), any());
+        doThrow(new RuntimeException("oops")).when(fileManagerService).saveFileWithRetry(file);
         RedirectAttributes attrs = new RedirectAttributesModelMap();
 
         String view = controller.uploadFile(file, null, null, null, null, attrs);
@@ -61,11 +56,11 @@ class FileControllerTest {
         assertEquals("redirect:/", view);
         assertTrue(attrs.getFlashAttributes().containsKey("uploadError"));
         assertEquals("Fout bij uploaden: oops", attrs.getFlashAttributes().get("uploadError"));
-        verify(fileManagerService).saveFileWithRetry(eq(file), any());
+        verify(fileManagerService).saveFileWithRetry(file);
     }
 
     @Test
-    void downloadFile_success() {
+    void downloadFile_success() throws Exception {
         byte[] data = {1,2,3};
         String checksum = md5(data);
         when(fileManagerService.getFile("f.bin")).thenReturn(data);

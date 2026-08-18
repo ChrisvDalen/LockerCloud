@@ -65,7 +65,7 @@ class FileManagerServiceTest {
         when(file.getInputStream()).thenThrow(new java.io.IOException("disk full"));
 
         FileStorageException ex = assertThrows(FileStorageException.class, () -> service.saveFile(file, ""));
-        assertTrue(ex.getMessage().contains("Error saving file error.txt"));
+        assertTrue(ex.getMessage().contains("Failed transactional save for error.txt"));
     }
 
     @Test
@@ -79,9 +79,10 @@ class FileManagerServiceTest {
 
         service.saveFile(file, md5(data));
 
-        Path chunk = storageDir.resolve("big.bin.part1");
-        assertTrue(Files.exists(chunk), "Chunkbestand moet zijn geschreven");
-        assertArrayEquals(data, Files.readAllBytes(chunk));
+        Path storedFile = storageDir.resolve("big.bin");
+        assertTrue(Files.exists(storedFile), "File should be assembled");
+        assertArrayEquals(data, Files.readAllBytes(storedFile));
+        assertFalse(Files.exists(storageDir.resolve("big.bin.part1")), "Chunks should be cleaned up");
     }
 
     @Test
