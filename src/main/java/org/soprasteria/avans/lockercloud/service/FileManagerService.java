@@ -28,9 +28,6 @@ import org.slf4j.LoggerFactory;
 @Service
 public class FileManagerService {
 
-    // Voor grote bestanden groter dan 4GB wordt chunking toegepast
-    private static final long CHUNK_THRESHOLD = 4L * 1024 * 1024 * 1024; // 4 GB
-    private static final long CHUNK_SIZE = 10 * 1024 * 1024; // 10 MB
     private static final Logger logger = LoggerFactory.getLogger(FileManagerService.class);
     // Bestanden groter dan 4GB moeten in chunks worden verwerkt volgens het protocol
     private static final long CHUNK_THRESHOLD = 4L * 1024 * 1024 * 1024; // 4 GB
@@ -79,6 +76,10 @@ public class FileManagerService {
         saveFile(file, expectedChecksum);
     }
 
+    public void saveFileWithRetry(MultipartFile file) {
+        saveFileWithRetry(file, null);
+    }
+
     /**
      * Save raw data from an InputStream. This simplified method is used by the
      * SSL socket server where uploads are handled without a Multipart request.
@@ -97,7 +98,7 @@ public class FileManagerService {
     }
 
     @Recover
-    public void recoverSaveFile(IOException e, MultipartFile file) { // Corrected signature
+    public void recoverSaveFile(IOException e, MultipartFile file, String expectedChecksum) {
         String fileName = file.getOriginalFilename();
         if (fileName != null) {
             deleteFileChunks(fileName); // Also delete the potentially incomplete main file if not chunked
@@ -186,6 +187,10 @@ public class FileManagerService {
         } catch (IOException e) {
             logger.error("Error listing directory for deleting chunks of {}: {}", normalizedOriginalFileName, e.getMessage());
         }
+    }
+
+    private static String bytesToHex(byte[] digest) {
+        return HexFormat.of().formatHex(digest);
     }
 
     public byte[] getFileFallback(String fileName, Throwable t) {
