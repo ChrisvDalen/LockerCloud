@@ -65,7 +65,7 @@ class FileControllerTest {
     }
 
     @Test
-    void downloadFile_success() {
+    void downloadFile_success() throws Exception {
         byte[] data = {1,2,3};
         String checksum = md5(data);
         when(fileManagerService.getFile("f.bin")).thenReturn(data);
