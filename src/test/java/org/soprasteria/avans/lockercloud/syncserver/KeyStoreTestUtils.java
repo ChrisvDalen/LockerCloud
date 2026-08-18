@@ -1,14 +1,8 @@
 package org.soprasteria.avans.lockercloud.syncserver;
 
-import sun.security.tools.keytool.CertAndKeyGen;
-import sun.security.x509.X500Name;
-
-import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.KeyStore;
-import java.security.cert.Certificate;
-import java.security.cert.X509Certificate;
+import java.util.concurrent.TimeUnit;
 
 /** Utility class for generating an in-memory keystore for SSL tests. */
 public final class KeyStoreTestUtils {
@@ -21,18 +15,27 @@ public final class KeyStoreTestUtils {
      * @return path to the created keystore file
      */
     public static Path createTempKeyStore(String password) throws Exception {
-        Path file = Files.createTempFile("test-keystore", ".jks");
+        Path file = Files.createTempDirectory("test-keystore").resolve("keystore.jks");
+        Path keytool = Path.of(System.getProperty("java.home"), "bin", "keytool");
+        Process process = new ProcessBuilder(
+                keytool.toString(),
+                "-genkeypair",
+                "-alias", "alias",
+                "-keyalg", "RSA",
+                "-keysize", "2048",
+                "-validity", "365",
+                "-dname", "CN=Test",
+                "-storetype", "JKS",
+                "-keystore", file.toString(),
+                "-storepass", password,
+                "-keypass", password,
+                "-noprompt")
+                .redirectErrorStream(true)
+                .start();
 
-        CertAndKeyGen gen = new CertAndKeyGen("RSA", "SHA256withRSA");
-        gen.generate(2048);
-        X509Certificate cert = gen.getSelfCertificate(new X500Name("CN=Test"), 365 * 24L * 60L * 60L);
-
-        KeyStore ks = KeyStore.getInstance("JKS");
-        ks.load(null, null);
-        ks.setKeyEntry("alias", gen.getPrivateKey(), password.toCharArray(), new Certificate[]{cert});
-
-        try (OutputStream out = Files.newOutputStream(file)) {
-            ks.store(out, password.toCharArray());
+        if (!process.waitFor(30, TimeUnit.SECONDS) || process.exitValue() != 0) {
+            throw new IllegalStateException(
+                    "Could not create test keystore: " + new String(process.getInputStream().readAllBytes()));
         }
         return file;
     }
