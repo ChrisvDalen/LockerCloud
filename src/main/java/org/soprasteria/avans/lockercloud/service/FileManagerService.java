@@ -270,7 +270,7 @@ public class FileManagerService {
                     .map(path -> path.getFileName().toString())
                     .filter(name -> !name.contains(".part")) // Exclude chunk files from list
                     .sorted() // Sort for consistent order
-                    .toList()
+                    .toList();
         } catch (IOException e) {
             logger.error("Error listing files from master storage: {}", e.getMessage());
             return Collections.emptyList();
