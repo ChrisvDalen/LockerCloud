@@ -45,11 +45,6 @@ public class FileController {
         this.fileManagerService = fileManagerService;
     }
 
-    @GetMapping("/")
-    public String index() {
-        return "index";
-    }
-
     @Operation(summary = "Upload a file", description = "Uploads a file to the server")
     @ApiResponse(responseCode = "200", description = "File uploaded successfully")
     @ApiResponse(responseCode = "400", description = "Error uploading file")

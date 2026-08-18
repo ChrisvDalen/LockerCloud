@@ -30,8 +30,8 @@ public class FileManagerService {
 
     private static final Logger logger = LoggerFactory.getLogger(FileManagerService.class);
     // Bestanden groter dan 4GB moeten in chunks worden verwerkt volgens het protocol
-    private static final long CHUNK_THRESHOLD = 4L * 1024 * 1024 * 1024; // 4 GB
-    private static final long CHUNK_SIZE = 10L * 1024 * 1024; // 10 MB
+    private long chunkThreshold = 4L * 1024 * 1024 * 1024; // 4 GB
+    private long chunkSize = 10L * 1024 * 1024; // 10 MB
     private static final long MOD_TIME_THRESHOLD_MS = 1000L;
 
     private final Path storageLocation = Paths.get("filestorage");
@@ -55,7 +55,7 @@ public class FileManagerService {
             throw new FileStorageException("File name cannot be null or empty.");
         }
         String normalizedFilename = Paths.get(originalFilename).getFileName().toString();
-        if (file.getSize() > CHUNK_THRESHOLD) {
+        if (file.getSize() > chunkThreshold) {
             saveLargeFile(file, expectedChecksum);
             return;
         }
@@ -63,9 +63,18 @@ public class FileManagerService {
         saveFileTransactional(file, expectedChecksum);
     }
 
-    @Retryable(retryFor = { IOException.class }, maxAttempts = 3, backoff = @Backoff(delay = 2000))
     public void saveFileWithRetry(MultipartFile file, String expectedChecksum) {
-        saveFile(file, expectedChecksum);
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            try {
+                saveFile(file, expectedChecksum);
+                return;
+            } catch (FileStorageException exception) {
+                if (!(exception.getCause() instanceof IOException) || attempt == 3) {
+                    throw exception;
+                }
+                deleteFileChunks(file.getOriginalFilename());
+            }
+        }
     }
 
     public void saveFileWithRetry(MultipartFile file) {
@@ -107,7 +116,7 @@ public class FileManagerService {
         String originalFileName = Paths.get(file.getOriginalFilename()).getFileName().toString();
         try (InputStream inputStream = file.getInputStream()) {
             MessageDigest md = MessageDigest.getInstance("MD5");
-            byte[] buffer = new byte[(int) CHUNK_SIZE];
+            byte[] buffer = new byte[(int) chunkSize];
             int bytesRead;
             int chunkIndex = 1;
             List<Path> writtenChunks = new ArrayList<>();
@@ -151,11 +160,9 @@ public class FileManagerService {
                 throw new FileStorageException("Checksum mismatch for file " + originalFileName);
             }
 
-            // 3) (Optioneel) verwijder de chunk-bestanden
-            // Verwijderen uitgeschakeld voor testondersteuning
-            // for (Path chunk : writtenChunks) {
-            //     Files.deleteIfExists(chunk);
-            // }
+            for (Path chunk : writtenChunks) {
+                Files.deleteIfExists(chunk);
+            }
         } catch (IOException | NoSuchAlgorithmException e) {
             // bestaande cleanup
             deleteFileChunks(originalFileName);
