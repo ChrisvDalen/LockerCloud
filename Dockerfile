@@ -5,7 +5,7 @@ LABEL authors="cvandalen"
 WORKDIR /app
 
 # Copy the packaged jar file into the container
-ARG JAR_FILE=target/LockerCloud-0.0.1-SNAPSHOT.jar
+ARG JAR_FILE=target/LockerCloud-0.0.1.jar
 COPY ${JAR_FILE} app.jar
 
 # Expose the secure port your Spring Boot application will run on

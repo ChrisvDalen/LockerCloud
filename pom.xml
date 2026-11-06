@@ -17,7 +17,7 @@
 
   <groupId>org.soprasteria.avans</groupId>
   <artifactId>LockerCloud</artifactId>
-  <version>0.0.1-SNAPSHOT</version>
+  <version>0.0.1</version>
   <name>LockerCloud</name>
   <description>LockerCloud</description>
 
