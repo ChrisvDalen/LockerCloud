@@ -11,7 +11,7 @@
   <parent>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
-    <version>3.4.4</version>
+    <version>4.2.0</version>
     <relativePath/>
   </parent>
 
@@ -24,14 +24,14 @@
   <properties>
     <!-- Java & Spring Boot -->
     <java.version>17</java.version>
-    <spring-boot.version>4.1.1</spring-boot.version>
+    <spring-boot.version>4.2.0</spring-boot.version>
 
     <!-- Spring REST Docs -->
-    <spring-restdocs.version>3.0.3</spring-restdocs.version>
+    <spring-restdocs.version>4.1.0</spring-restdocs.version>
 
     <!-- Lombok -->
-    <lombok.version>1.18.46</lombok.version>
-    <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
+    <lombok.version>1.18.48</lombok.version>
+    <maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>
   </properties>
 
   <dependencyManagement>
@@ -74,7 +74,7 @@
     <dependency>
       <groupId>org.springdoc</groupId>
       <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-      <version>2.2.0</version>
+      <version>3.2.1</version>
     </dependency>
 
     <!-- Retry & Aspects -->
@@ -86,7 +86,6 @@
     <dependency>
       <groupId>org.springframework</groupId>
       <artifactId>spring-aspects</artifactId>
-      <version>7.0.9</version>
     </dependency>
 
     <!-- Config Processor -->
@@ -118,14 +117,19 @@
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>org.springframework.security</groupId>
-      <artifactId>spring-security-test</artifactId>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-webmvc-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-security-test</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>io.github.resilience4j</groupId>
-      <artifactId>resilience4j-spring-boot2</artifactId>
-      <version>2.3.0</version>
+      <artifactId>resilience4j-spring-boot4</artifactId>
+      <version>2.4.0</version>
     </dependency>
 
     <dependency>
