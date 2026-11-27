@@ -1,6 +1,6 @@
 package org.soprasteria.avans.lockercloud.health;
 
-import org.springframework.boot.actuate.health.*;
+import org.springframework.boot.health.contributor.*;
 import org.springframework.stereotype.Component;
 import java.nio.file.*;
 
